@@ -2,6 +2,14 @@
 
 Follow these steps to deploy **Sprint 1 (v0.1.0)** to production.
 
+## 0. Pre-requisites
+Before starting, ensure your local environment is configured by following the **[WINDOWS_SETUP.md](./WINDOWS_SETUP.md)** guide.
+
+Run the pre-flight check:
+```powershell
+.\scripts\production-deploy.ps1
+```
+
 ## 1. Supabase Project Setup
 1. Create a new Supabase project in the **India (Mumbai)** region.
 2. Install Supabase CLI: `npm install supabase --save-dev`

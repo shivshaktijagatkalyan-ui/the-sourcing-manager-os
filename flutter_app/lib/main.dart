@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'app_config.dart';
 import 'screens/lead_queue.dart';
 import 'screens/broker_upload.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Supabase
-  // await Supabase.initialize(
-  //   url: 'YOUR_SUPABASE_URL',
-  //   anonKey: 'YOUR_SUPABASE_ANON_KEY',
-  // );
+
+  if (AppConfig.isSupabaseConfigured) {
+    await Supabase.initialize(
+      url: AppConfig.supabaseUrl,
+      anonKey: AppConfig.supabaseAnonKey,
+    );
+  }
 
   runApp(const SourcingManagerOS());
 }
@@ -26,13 +28,13 @@ class SourcingManagerOS extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        primaryColor: const Color(0xFF6366F1), // Modern Indigo
-        scaffoldBackgroundColor: const Color(0xFF0F172A), // Slate 900
+        primaryColor: const Color(0xFF6366F1),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
         textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF6366F1),
-          secondary: Color(0xFF10B981), // Emerald 500
-          surface: Color(0xFF1E293B), // Slate 800
+          secondary: Color(0xFF10B981),
+          surface: Color(0xFF1E293B),
         ),
         useMaterial3: true,
       ),
