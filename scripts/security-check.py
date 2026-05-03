@@ -1,61 +1,77 @@
-import os
-import sys
+from pathlib import Path
 import re
+import sys
 
-# Non-negotiable blocked terms (System Constitution)
-BLOCKED_TERMS = [
-    'masked_phone',
-    'last_four',
-    'plain_phone',
-    'customer_phone',
-    'mobile_number',
-    'tel:',
-    'wa.me',
-    'api.whatsapp.com',
-    'console.log(phone',
-    'console.log(payload',
-    'raw_provider_payload'
+
+ROOT = Path(__file__).resolve().parents[1]
+SCAN_DIRS = [
+    ROOT / "flutter_app" / "lib",
+    ROOT / "supabase" / "functions",
 ]
 
-# Directories to scan
-SCAN_DIRS = ['flutter_app/lib', 'supabase/functions']
+BLOCKED_TERMS = [
+    "masked_phone",
+    "last_four",
+    "plain_phone",
+    "customer_phone",
+    "mobile_number",
+    "tel:",
+    "wa.me",
+    "api.whatsapp.com",
+    "console.log(phone",
+    "console.log(payload",
+    "raw_provider_payload",
+]
 
-# Exclude list (e.g. this script itself)
-EXCLUDE_FILES = ['security-check.py']
+BLOCKED_PATTERNS = [
+    (re.compile(r"console\.(log|debug|info|warn|error)\s*\("), "runtime logging is forbidden in frontend and Edge Functions"),
+    (re.compile(r"https://wa\.me|https://api\.whatsapp\.com|tel:", re.IGNORECASE), "direct calling or WhatsApp links are forbidden"),
+    (re.compile(r"last\s*4|last\s*four|masked\s*number", re.IGNORECASE), "partial or masked contact display is forbidden"),
+]
 
-def scan_files():
-    violations = []
+CONTACT_WORD_ALLOWED = {
+    "flutter_app/lib/screens/broker_upload.dart",
+    "supabase/functions/broker-upload-lead/index.ts",
+}
+
+
+def iter_source_files():
     for scan_dir in SCAN_DIRS:
-        if not os.path.exists(scan_dir):
+        if not scan_dir.exists():
             continue
-            
-        for root, _, files in os.walk(scan_dir):
-            for file in files:
-                if file in EXCLUDE_FILES:
-                    continue
-                
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                        for term in BLOCKED_TERMS:
-                            if term in content:
-                                # Check for false positives or permitted usage if any (none for now)
-                                violations.append(f"VIOLATION: '{term}' found in {file_path}")
-                except Exception as e:
-                    print(f"Error reading {file_path}: {e}")
-    
-    return violations
+        for path in scan_dir.rglob("*"):
+            if path.suffix in {".dart", ".ts"} and path.is_file():
+                yield path
+
+
+def main() -> int:
+    violations = []
+
+    for path in iter_source_files():
+        rel = path.relative_to(ROOT).as_posix()
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+
+        for term in BLOCKED_TERMS:
+            if term.lower() in lowered:
+                violations.append(f"{rel}: blocked term '{term}'")
+
+        for pattern, reason in BLOCKED_PATTERNS:
+            if pattern.search(text):
+                violations.append(f"{rel}: {reason}")
+
+        if rel not in CONTACT_WORD_ALLOWED and re.search(r"\b(phone|mobile|whatsapp)\b", text, re.IGNORECASE):
+            violations.append(f"{rel}: contact wording outside broker upload flow")
+
+    if violations:
+        print("Security constitution scan failed:", file=sys.stderr)
+        for violation in violations:
+            print(f"- {violation}", file=sys.stderr)
+        return 1
+
+    print("Security constitution scan passed")
+    return 0
+
 
 if __name__ == "__main__":
-    print("Starting Security Constitution Scan...")
-    violations = scan_files()
-    
-    if violations:
-        print("\n!!! SECURITY CONSTITUTION VIOLATED !!!")
-        for v in violations:
-            print(v)
-        sys.exit(1)
-    else:
-        print("\nSecurity check passed. No forbidden terms detected.")
-        sys.exit(0)
+    raise SystemExit(main())

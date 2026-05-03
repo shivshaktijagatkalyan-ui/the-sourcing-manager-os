@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_config.dart';
 import 'screens/lead_queue.dart';
 import 'screens/broker_upload.dart';
+import 'screens/site_visit_list.dart';
+import 'screens/broker_review_list.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +57,8 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<Widget> _screens = [
     const LeadQueueScreen(),
+    const SiteVisitListScreen(),
+    const BrokerReviewListScreen(),
     const BrokerUploadScreen(),
   ];
 
@@ -67,6 +71,8 @@ class _MainNavigationState extends State<MainNavigation> {
         onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.list_alt), label: 'Leads'),
+          NavigationDestination(icon: Icon(Icons.location_on_outlined), label: 'Visits'),
+          NavigationDestination(icon: Icon(Icons.rate_review_outlined), label: 'Review'),
           NavigationDestination(icon: Icon(Icons.add_circle_outline), label: 'Upload'),
         ],
       ),

@@ -1,36 +1,118 @@
 # Windows Setup Guide - The Sourcing Manager OS
 
-Follow these instructions to set up your local environment for deploying and testing the Sourcing Manager OS.
+Use this guide before running the Sprint 1 deployment gate on Windows. Do not mark Sprint 1 deployed until the gate and live smoke tests pass with real output.
 
-## 1. Install PowerShell 7 (Recommended)
-While Windows PowerShell 5.1 works, **PowerShell 7.x (Core)** is recommended for the best experience.
-- **Install**: `winget install Microsoft.PowerShell`
-- **Verify**: `pwsh --version`
+## 1. Use PowerShell 7
 
-## 2. Install Python 3
-Required for the `security-check.py` scanner.
-- **Download**: [python.org](https://www.python.org/downloads/windows/) (Check "Add Python to PATH" during installation)
-- **Alternative**: `winget install Python.Python.3.11`
-- **Verify**: `python --version` or `py -3 --version`
+PowerShell 7 is recommended for consistent command behavior on Windows.
 
-## 3. Install Supabase CLI
-Required for database migrations and deploying Edge Functions.
-- **Install (npm)**: `npm install supabase --save-dev`
-- **Install (Scoop)**: `scoop install supabase`
-- **Verify**: `npx supabase --version` (or `supabase --version` if installed globally)
-
-## 4. Install Flutter SDK
-Required for the PWA frontend.
-- **Download**: [flutter.dev](https://docs.flutter.dev/get-started/install/windows)
-- **Setup**: Extract to `C:\src\flutter` and add `C:\src\flutter\bin` to your User PATH environment variables.
-- **Verify**: `flutter --version`
-
-## 5. Verify Your Setup
-Run the following script from the project root to confirm all tools are correctly configured:
 ```powershell
-.\scripts\production-deploy.ps1
+winget install Microsoft.PowerShell
+pwsh --version
 ```
 
-### Common Issues:
-- **PATH not updated**: If you just installed a tool, you must restart your terminal for the PATH changes to take effect.
-- **Execution Policy**: If you cannot run the `.ps1` script, run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`.
+Windows PowerShell 5.1 may run the script, but PowerShell 7 should be used for deployment verification.
+
+## 2. Check What You Already Have
+
+Open PowerShell 7 and run:
+
+```powershell
+$PSVersionTable.PSVersion
+python --version
+py -3 --version
+supabase --version
+flutter --version
+git --version
+```
+
+If any command is missing, install that tool, restart PowerShell, and verify again.
+
+## 3. Install Python 3
+
+Python 3 is required for the deployment security constitution scanner. The deploy script prefers `python`; if that is unavailable, it falls back to the Windows launcher with `py -3`.
+
+```powershell
+winget install Python.Python.3.12
+```
+
+Restart PowerShell and check:
+
+```powershell
+python --version
+```
+
+If `python` still fails, test:
+
+```powershell
+py -3 --version
+```
+
+Download page: [python.org/downloads/windows](https://www.python.org/downloads/windows/)
+
+## 4. Install Supabase CLI
+
+Supabase CLI is required for database migrations and Edge Function deployment. The production gate requires the `supabase` command in PATH; it does not use `npx supabase` as a deployment substitute.
+
+```powershell
+winget install Supabase.CLI
+```
+
+Check:
+
+```powershell
+supabase --version
+```
+
+Docs: [supabase.com/docs/guides/cli](https://supabase.com/docs/guides/cli)
+
+## 5. Install Flutter SDK
+
+Flutter is required for PWA analysis and production web build.
+
+```powershell
+winget install Google.Flutter
+```
+
+Restart PowerShell and check:
+
+```powershell
+flutter --version
+flutter doctor
+```
+
+Docs: [docs.flutter.dev/get-started/install/windows](https://docs.flutter.dev/get-started/install/windows)
+
+## 6. Install Git
+
+Git is required for deployment source control and release traceability.
+
+```powershell
+winget install Git.Git
+git --version
+```
+
+## 7. PATH Verification
+
+After installing tools, restart PowerShell 7 and run:
+
+```powershell
+Get-Command python
+Get-Command py
+Get-Command supabase
+Get-Command flutter
+Get-Command git
+```
+
+At least one Python path must work: `python` or `py -3`. The other required tools must resolve directly from PATH.
+
+## 8. Run Deployment Gate
+
+From the project root:
+
+```powershell
+cd "C:\Users\iBUGG3D\Desktop\The Sourcing MAnager OS"
+./scripts/production-deploy.ps1
+```
+
+If the script reports a missing tool, stop and fix the local setup first. Do not run migrations, function deployment, or Flutter build manually to bypass the gate.

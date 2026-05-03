@@ -1,20 +1,43 @@
-# Security Constitution
+# Security
 
-The Sourcing Manager OS is built on a "Trustless" model. The system enforces data privacy through architectural constraints, not user policy.
+## System Constitution
 
-## Non-Negotiable Rules
+Sensitive customer contact data must never be visible in UI, API responses, logs, exports, screenshots, browser memory, or provider callback storage. Partial masks and last digits are also forbidden.
 
-1. **Phone Visibility**: No phone numbers (full or masked) shall ever be visible to any user or returned in any frontend API response.
-2. **Encryption**: All PII (Personally Identifiable Information) must be encrypted using `pgcrypto` AES-256 before storage.
-3. **Edge Isolation**: Decryption is permitted ONLY within Supabase Edge Functions. The database itself never returns plaintext phone numbers to the client.
-4. **Bridge Calling**: All communication happens via PSTN bridges (Exotel). The caller and receiver are connected by the server; neither sees the other's real number.
-5. **Data Loan Model**: Access to interact with a lead is a temporary "loan". Once expired or revoked, the system blocks all interaction attempts at the API level.
+## Enforcement Model
 
-## Threat Model & Mitigation
+- Public metadata lives in `leads_public`.
+- Encrypted ciphertext lives in `leads_sensitive`.
+- Authenticated frontend users have no `SELECT` policy on `leads_sensitive`.
+- RLS is enabled and forced on every Sprint 1 table.
+- Sensitive actions require an active, unexpired, non-revoked `data_loans` row.
+- Edge Functions use service role only after authenticating the caller.
+- Decryption occurs only in `initiate-call`, only in memory, and is never returned.
+- Audit events are append-only and must contain only safe metadata.
 
-| Threat | Mitigation |
-| --- | --- |
-| Database Leak | Data is encrypted at rest; keys are stored in Supabase Vault/Env. |
-| Malicious Caller | Caller never sees the number; PSTN bridge masks identity. |
-| Scraping | Lead metadata is public-ish but useless without the encrypted bridge. |
-| Frontend DevTools | API responses contain UUIDs, never phone numbers. |
+## Calling
+
+Calling is server-side PSTN bridging through Exotel. The Flutter app sends only:
+
+```json
+{ "lead_id": "uuid" }
+```
+
+Frontend direct calling, WhatsApp links, and browser call links are forbidden.
+
+## India Compliance Assumptions
+
+- DPDP: collect minimum data, bind processing to the broker upload and data-loan purpose, and keep sensitive data encrypted.
+- TRAI DND: `initiate-call` blocks rows marked `dnd_status = blocked`.
+- Consent: `initiate-call` blocks rows unless `consent_status = granted`.
+- RERA/GST: metadata columns exist for future verified integrations without merging sensitive data.
+
+## Abuse Cases Covered
+
+- No active loan: Edge Function returns `access_denied`.
+- Expired loan: Edge Function returns `loan_expired`.
+- Revoked loan: Edge Function returns `revoked`.
+- DND blocked: Edge Function returns `dnd_blocked`.
+- Consent missing: Edge Function returns `consent_required`.
+- Frontend network inspection: call request body contains only `lead_id`.
+- Direct sensitive-table read: no authenticated frontend policy exists.

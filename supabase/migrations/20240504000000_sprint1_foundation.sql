@@ -207,7 +207,7 @@ BEGIN
     RAISE EXCEPTION 'encryption_key_invalid';
   END IF;
 
-  RETURN encode(pgp_sym_encrypt(p_contact, p_key, 'cipher-algo=aes256'), 'base64');
+  RETURN encode(extensions.pgp_sym_encrypt(p_contact, p_key, 'cipher-algo=aes256'), 'base64');
 END;
 $$;
 
@@ -222,7 +222,7 @@ BEGIN
     RAISE EXCEPTION 'encryption_key_invalid';
   END IF;
 
-  RETURN pgp_sym_decrypt(decode(p_ciphertext, 'base64'), p_key);
+  RETURN extensions.pgp_sym_decrypt(decode(p_ciphertext, 'base64'), p_key);
 END;
 $$;
 

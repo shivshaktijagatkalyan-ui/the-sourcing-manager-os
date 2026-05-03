@@ -1,63 +1,96 @@
 # Deployment Guide - The Sourcing Manager OS
 
-Follow these steps to deploy **Sprint 1 (v0.1.0)** to production.
+Sprint 1 deployment is blocked until the Windows setup, deployment gate, and live smoke tests all pass with real command output. Do not start Sprint 2 from this state.
 
-## 0. Pre-requisites
-Before starting, ensure your local environment is configured by following the **[WINDOWS_SETUP.md](./WINDOWS_SETUP.md)** guide.
+## 0. Windows Setup First
 
-Run the pre-flight check:
+Before deployment, complete [WINDOWS_SETUP.md](./WINDOWS_SETUP.md). The required local tools are:
+
+- Python 3 via `python` or `py -3`
+- Supabase CLI via `supabase`
+- Flutter SDK via `flutter`
+- Git via `git`
+
+Run the deployment gate from the project root:
+
 ```powershell
-.\scripts\production-deploy.ps1
+cd "C:\Users\iBUGG3D\Desktop\The Sourcing MAnager OS"
+./scripts/production-deploy.ps1
 ```
+
+If the gate reports a missing tool, deployment stops safely. Do not bypass the gate, do not fake smoke-test results, and do not mark Sprint 1 deployed.
 
 ## 1. Supabase Project Setup
-1. Create a new Supabase project in the **India (Mumbai)** region.
-2. Install Supabase CLI: `npm install supabase --save-dev`
-3. Login: `npx supabase login`
-4. Link project: `npx supabase link --project-ref your-project-ref`
 
-## 2. Database Migration
-Apply the Sprint 1 schema and RLS policies:
-```bash
-npx supabase db push
-```
-*Note: This will execute `supabase/migrations/20240504000000_sprint1_foundation.sql`.*
+1. Create a Supabase project in the India/Mumbai region where available.
+2. Login:
 
-## 3. Environment Secrets
-Set the required secrets for Edge Functions via the Supabase Dashboard or CLI:
-
-```bash
-npx supabase secrets set PHONE_ENCRYPTION_KEY="your-secure-key"
-npx supabase secrets set EXOTEL_SID="your-sid"
-npx supabase secrets set EXOTEL_API_KEY="your-key"
-npx supabase secrets set EXOTEL_API_TOKEN="your-token"
-npx supabase secrets set EXOTEL_CALLER_ID="your-verified-id"
+```powershell
+supabase login
 ```
 
-## 4. Edge Function Deployment
-Deploy the enforcement logic:
-```bash
-npx supabase functions deploy broker-upload-lead
-npx supabase functions deploy initiate-call
-npx supabase functions deploy exotel-callback
+3. Link the project:
+
+```powershell
+supabase link --project-ref your-project-ref
 ```
 
-## 5. Flutter Web Deployment
-1. Navigate to `flutter_app`.
-2. Update `lib/main.dart` with your production `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-3. Build for web:
-   ```bash
-   flutter build web --release
-   ```
-4. Deploy the contents of `build/web` to your hosting provider (Vercel, Netlify, or Firebase Hosting).
+## 2. Environment Secrets
 
-## 6. Exotel Callback URL
-In your Exotel Dashboard, ensure your callback URL for the virtual number is set to:
-`https://your-project.supabase.co/functions/v1/exotel-callback`
+Set secrets through Supabase Dashboard or CLI. Do not commit or print secret values.
 
-## 7. Live Smoke Test Checklist
-- [ ] **Upload**: Broker uploads a lead; check that only `lead_id` and `alias` are returned.
-- [ ] **DB Check**: Verify `phone_ciphertext` exists in `leads_sensitive`. Ensure `leads_public` has NO phone column.
-- [ ] **Unauthorized Call**: Attempt to call a lead without an active `data_loan`. Expected: `access_denied`.
-- [ ] **Bridge Call**: Call a lead with an active loan. Verify Exotel bridges the call and status updates in `call_attempts`.
-- [ ] **RLS Bypass Check**: Try to SELECT from `leads_sensitive` as an authenticated user. Expected: 0 rows (Default Deny).
+```powershell
+supabase secrets set PHONE_ENCRYPTION_KEY="your-secure-key"
+supabase secrets set EXOTEL_SID="your-sid"
+supabase secrets set EXOTEL_API_KEY="your-key"
+supabase secrets set EXOTEL_API_TOKEN="your-token"
+supabase secrets set EXOTEL_CALLER_ID="your-verified-id"
+supabase secrets set EXOTEL_SUBDOMAIN="api.in.exotel.com"
+```
+
+## 3. Commands Run By The Gate
+
+The production gate runs these commands only after all required tools are found:
+
+```powershell
+python scripts/security-check.py
+supabase db push
+supabase functions deploy broker-upload-lead
+supabase functions deploy initiate-call
+supabase functions deploy exotel-callback
+cd flutter_app
+flutter pub get
+flutter analyze
+flutter build web --release
+```
+
+If the Windows Python launcher is used, the scanner command is:
+
+```powershell
+py -3 scripts/security-check.py
+```
+
+## 4. Exotel Callback URL
+
+In the Exotel dashboard, set the callback URL to:
+
+```text
+https://your-project.supabase.co/functions/v1/exotel-callback
+```
+
+Do not call Exotel from the frontend. The browser may send only `lead_id` to `initiate-call`.
+
+## 5. Live Smoke Test Checklist
+
+Record actual results in [LIVE_SMOKE_TEST_RESULTS.md](./LIVE_SMOKE_TEST_RESULTS.md) only after deployment succeeds.
+
+- [ ] Broker uploads a lead; response contains only `lead_id` and `alias`.
+- [ ] `leads_public` contains metadata only.
+- [ ] `leads_sensitive` contains ciphertext only.
+- [ ] No plaintext contact data appears in database search, logs, UI, network payloads, screenshots, or exports.
+- [ ] Caller without active data loan receives `access_denied`.
+- [ ] Expired or revoked loan blocks call at Edge Function time.
+- [ ] DND blocked lead returns `dnd_blocked`.
+- [ ] Missing consent returns `consent_required`.
+- [ ] Exotel bridge call queues through server-side PSTN only.
+- [ ] Authenticated frontend user cannot select from `leads_sensitive`.

@@ -1,0 +1,17 @@
+{
+  "name": "the-sourcing-manager-os",
+  "version": "1.0.0",
+  "description": "Open-source trustless real estate data enforcement layer for India.",
+  "main": "index.js",
+  "scripts": {
+    "security": "node scripts/security-check.mjs",
+    "supabase": "supabase"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "AGPL-3.0-only",
+  "type": "commonjs",
+  "devDependencies": {
+    "supabase": "^2.98.0"
+  }
+}
