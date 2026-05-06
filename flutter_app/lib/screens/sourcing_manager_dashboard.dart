@@ -152,8 +152,10 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
                       const SizedBox(height: 24),
                       _buildSectionTitle('TODAY\'S PRIORITIES'),
                       const SizedBox(height: 12),
-                      _buildHinglishHelp('Aaj follow-up due hai. Broker ko secure call karein. Number screen par kabhi nahi dikhega.'),
+                      _buildHinglishHelp('Aaj ke follow-ups line mein hain. Broker ko "Secure Call" karein, number kabhi leak nahi hoga.'),
                       const SizedBox(height: 16),
+                      _buildActionHub(),
+                      const SizedBox(height: 24),
                       _buildKPIGrid(),
                       const SizedBox(height: 32),
                       PremiumUI.sectionShell(
@@ -468,22 +470,54 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
     );
   }
 
-  Widget _buildQuickActionGrid() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 3,
+  Widget _buildActionHub() {
+    return Column(
       children: [
-        _actionBtn('Add Broker', Icons.person_add, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AddBrokerScreen()))),
-        _actionBtn('Add Lead', Icons.post_add, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AddLeadFromBrokerScreen()))),
-        _actionBtn('Follow-ups', Icons.call, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const BrokerFollowupQueueScreen()))),
-        _actionBtn('Site Visits', Icons.location_on, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SiteVisitListScreen()))),
-        _actionBtn('Review Queue', Icons.fact_check, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const BrokerReviewListScreen()))),
+        Row(
+          children: [
+            Expanded(child: _largeActionCard('Add New Lead', Icons.post_add, PremiumUI.secondary, () => Navigator.push(context, MaterialPageRoute(builder: (c) => AddLeadFromBrokerScreen())))),
+            const SizedBox(width: 12),
+            Expanded(child: _largeActionCard('Add Broker', Icons.person_add, PremiumUI.primary, () => Navigator.push(context, MaterialPageRoute(builder: (c) => AddBrokerScreen())))),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _largeActionCard('Review Leads', Icons.fact_check, PremiumUI.accent, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const BrokerReviewListScreen())))),
+            const SizedBox(width: 12),
+            Expanded(child: _largeActionCard('Follow-ups', Icons.call, PremiumUI.warning, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const BrokerFollowupQueueScreen())))),
+          ],
+        ),
       ],
     );
+  }
+
+  Widget _largeActionCard(String label, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        height: 100,
+        decoration: BoxDecoration(
+          color: PremiumUI.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 10),
+            Text(label.toUpperCase(), style: PremiumUI.subtitle.copyWith(color: Colors.white, fontSize: 10, letterSpacing: 1)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActionGrid() {
+    return const SizedBox.shrink();
   }
 
   Widget _actionBtn(String label, IconData icon, VoidCallback onTap) {

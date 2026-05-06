@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app_config.dart';
 import '../utils/premium_ui.dart';
 import '../utils/training_runtime.dart';
+import 'add_lead_from_broker.dart';
 
 class BrokerDashboardScreen extends StatefulWidget {
   const BrokerDashboardScreen({super.key});
@@ -242,6 +243,10 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
                   children: [
                     _buildProfileHeader(),
                     const SizedBox(height: 24),
+                    _buildHinglishHelp('Apne leads yahan se add karein. Aapka data humesha safe aur secure rahega.'),
+                    const SizedBox(height: 16),
+                    _largeActionCard('ADD NEW LEAD', Icons.post_add, PremiumUI.primary, () => Navigator.push(context, MaterialPageRoute(builder: (c) => AddLeadFromBrokerScreen()))),
+                    const SizedBox(height: 24),
                     _buildKPIGrid(),
                     const SizedBox(height: 32),
                     _buildSectionTitle('CONNECTED SOURCING MANAGERS'),
@@ -469,6 +474,50 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(text.toUpperCase(), style: PremiumUI.subtitle.copyWith(color: color, fontSize: 8, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildHinglishHelp(String text) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PremiumUI.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: PremiumUI.primary.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, color: PremiumUI.primary, size: 16),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: PremiumUI.subtitle.copyWith(color: Colors.white70, fontSize: 11))),
+        ],
+      ),
+    );
+  }
+
+  Widget _largeActionCard(String label, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        height: 64,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [color, color.withValues(alpha: 0.7)]),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white),
+              const SizedBox(width: 12),
+              Text(label.toUpperCase(), style: PremiumUI.h1.copyWith(fontSize: 14, letterSpacing: 1)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
