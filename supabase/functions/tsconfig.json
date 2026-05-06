@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["esnext", "dom"],
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "std/http/server.ts": ["https://deno.land/std@0.168.0/http/server.ts"],
+      "std/*": ["https://deno.land/std@0.168.0/*"],
+      "@/*": ["./*"]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["**/*.ts"]
+}

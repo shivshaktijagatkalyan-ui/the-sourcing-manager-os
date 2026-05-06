@@ -1,70 +1,56 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// @ts-ignore: Deno import
+import { serve } from 'std/http/server.ts'
+import { adminClient, currentUser, requirePermission, safeJson, recordAudit, corsHeaders } from '../_shared/sprint7.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
 
-serve(async (req) => {
+
+serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
+    const user = await currentUser(req)
+    if (!user) return safeJson({ ok: false, reason: 'unauthorized' }, 401)
 
-    const serviceRoleSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const admin = adminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) throw new Error('Unauthorized')
+    // 1. Fetch Pilot Context for Org ID
+    const { data: pilot, error: pilotError } = await admin
+      .from('pilot_users')
+      .select('org_id, status, organizations(status)')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    // Sprint 3: Pilot Active Check
-    const { data: isActive, error: activeError } = await serviceRoleSupabase.rpc('is_pilot_active', { p_user_id: user.id })
-    if (activeError || !isActive) {
-        return new Response(JSON.stringify({ ok: false, reason: 'pilot_user_inactive_or_unconfigured' }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 403,
-        })
+    if (pilotError || !pilot || pilot.status !== 'active' || pilot.organizations?.status !== 'active') {
+      return safeJson({ ok: false, reason: 'access_blocked_operational' }, 403)
     }
 
-    const { lead_id, project_id, sourcing_manager_id, scheduled_at } = await req.json()
+    // 2. Strict Permission Check
+    const allowed = await requirePermission(admin, user.id, 'can_create_site_visits', pilot.org_id)
+    if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
 
-    // 1. Fetch lead to get broker_id and validate ownership
-    const { data: lead, error: leadError } = await serviceRoleSupabase
+    const { lead_id, project_id, scheduled_at } = await req.json()
+
+    // 3. Validate Ownership & Active Loan
+    const { data: lead, error: leadError } = await admin
       .from('leads_public')
-      .select('broker_id')
+      .select('broker_id, organization_id')
       .eq('id', lead_id)
       .single()
 
-    if (leadError || !lead) {
-      return new Response(JSON.stringify({ ok: false, reason: 'lead_not_found' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 404,
-      })
+    if (leadError || !lead || lead.organization_id !== pilot.org_id) {
+      return safeJson({ ok: false, reason: 'lead_not_found_or_forbidden' }, 404)
     }
 
-    // 2. Validate active data loan
-    const { data: hasLoan, error: loanError } = await serviceRoleSupabase.rpc('has_active_data_loan', {
+    const { data: hasLoan } = await admin.rpc('has_active_data_loan', {
       p_lead_id: lead_id,
       p_user_id: user.id,
       p_purpose: 'site_visit'
-    });
+    })
 
-    if (loanError || !hasLoan) {
-      return new Response(JSON.stringify({ ok: false, reason: 'active_loan_required' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 403,
-      })
-    }
+    if (!hasLoan) return safeJson({ ok: false, reason: 'active_loan_required' }, 403)
 
-    // 3. Create the site visit record (Service Role)
-    const { data: visit, error: visitError } = await serviceRoleSupabase
+    // 4. Create record
+    const { data: visit, error: visitError } = await admin
       .from('site_visits')
       .insert({
         lead_id,
@@ -77,30 +63,18 @@ serve(async (req) => {
       .select()
       .single()
 
-    if (visitError) {
-      return new Response(JSON.stringify({ ok: false, reason: 'visit_creation_failed' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      })
-    }
+    if (visitError) throw new Error('visit_creation_failed')
 
-    // 4. Audit the creation (Service Role)
-    await serviceRoleSupabase.from('audit_events').insert({
-      actor_id: user.id,
-      event_type: 'site_visit_created',
-      lead_id: lead_id,
-      event_context: { site_visit_id: visit.id, project_id }
+    // 5. Audit
+    await recordAudit(admin, user.id, pilot.org_id, null, 'site_visit_created', {
+      site_visit_id: visit.id,
+      lead_id,
+      project_id
     })
 
-    return new Response(JSON.stringify({ ok: true, visit_id: visit.id }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    return safeJson({ ok: true, visit_id: visit.id })
 
-  } catch (error) {
-    return new Response(JSON.stringify({ ok: false, reason: 'internal_error' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    })
+  } catch (err) {
+    return safeJson({ ok: false, reason: 'internal_server_error' }, 500)
   }
 })

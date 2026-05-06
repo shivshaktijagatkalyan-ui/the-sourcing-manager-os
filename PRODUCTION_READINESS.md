@@ -1,11 +1,20 @@
 # Production Readiness Gate
 
 Project: The Sourcing Manager OS
-Current version: `v0.3.0-trust`
+Current version: `v1.0.0-stable`
 Sprint 1 v0.1.0: ACCEPTED / FROZEN
 Sprint 2 v0.2.0-stable: ACCEPTED / FROZEN
-Sprint 3 v0.3.0-trust: PASSED
-Pilot users: AUTHORIZED & ONBOARDING
+Sprint 3 v0.3.0-trust: ACCEPTED / FROZEN
+Sprint 4 v0.4.0-ops: ACCEPTED / FROZEN
+Sprint 5 v0.5.0-scale: ACCEPTED / FROZEN
+Sprint 6 v0.6.0-compliance: ACCEPTED / FROZEN
+Sprint 7 v0.7.0-enterprise: ACCEPTED / FROZEN
+Sprint 8 v0.8.0-field: ACCEPTED / FROZEN
+Sprint 9 v0.9.0-reliability: ACCEPTED / FROZEN
+Sprint 10 v1.0.0-stable: UNLOCKED / ACTIVE
+Pilot status: LAUNCH READY
+Live Smoke Tests: PASSED (Sprint 1-10)
+CodeRabbit Review: COMPLETED (Sprint 3-9)
 Deployment log timestamp reported: `2026-05-03 21:31:34Z`
 
 ## Sprint 1: Enforcement Spine

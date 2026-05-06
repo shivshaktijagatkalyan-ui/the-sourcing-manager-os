@@ -8,6 +8,7 @@ Set-Location $ProjectRoot
 
 $script:PythonExecutable = $null
 $script:PythonArgs = @()
+$script:FlutterExecutable = $null
 
 function Write-MissingTool {
     param (
@@ -132,6 +133,44 @@ function Test-Python3 {
     return $false
 }
 
+function Test-FlutterSdk {
+    Write-Host "Checking for Flutter SDK..." -NoNewline
+
+    $pathsToTest = @()
+    if ($env:FLUTTER_BIN) { $pathsToTest += $env:FLUTTER_BIN }
+    $pathsToTest += "flutter"
+    $pathsToTest += "C:\src\flutter\bin\flutter.bat"
+
+    foreach ($cmd in $pathsToTest) {
+        $oldErrorPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $cmd --version *> $null
+            $versionExitCode = $LASTEXITCODE
+        }
+        catch {
+            $versionExitCode = 1
+        }
+        finally {
+            $ErrorActionPreference = $oldErrorPreference
+        }
+
+        if ($versionExitCode -eq 0) {
+            $script:FlutterExecutable = $cmd
+            Write-Host " OK ($cmd)" -ForegroundColor Green
+            return $true
+        }
+    }
+
+    Write-MissingTool `
+        -Name "Flutter SDK" `
+        -Why "Required for Flutter Web/PWA analysis and production build." `
+        -Install "winget install Google.Flutter" `
+        -Verify "flutter --version; flutter doctor" `
+        -Link "https://docs.flutter.dev/get-started/install/windows"
+    return $false
+}
+
 function Stop-IfFailed {
     param ([string]$StepName)
 
@@ -142,9 +181,11 @@ function Stop-IfFailed {
 }
 
 Write-Host "=== Sourcing Manager OS Deployment Pre-flight ===" -ForegroundColor Cyan
-Write-Host "Sprint 2 deployment remains blocked until this gate and live smoke tests pass." -ForegroundColor Yellow
+Write-Host "Production v1.0.0-stable deployment gate is ACTIVE." -ForegroundColor Yellow
 
+$CurrentVersion = "v1.0.0-stable"
 $allToolsFound = $true
+
 
 if (-not (Test-Python3)) { $allToolsFound = $false }
 
@@ -157,14 +198,7 @@ if (-not (Test-ExternalTool `
     -Verify "supabase --version" `
     -Link "https://supabase.com/docs/guides/cli")) { $allToolsFound = $false }
 
-if (-not (Test-ExternalTool `
-    -Name "Flutter SDK" `
-    -Command "flutter" `
-    -VersionArgs @("--version") `
-    -Why "Required for Flutter Web/PWA analysis and production build." `
-    -Install "winget install Google.Flutter" `
-    -Verify "flutter --version; flutter doctor" `
-    -Link "https://docs.flutter.dev/get-started/install/windows")) { $allToolsFound = $false }
+if (-not (Test-FlutterSdk)) { $allToolsFound = $false }
 
 if (-not (Test-ExternalTool `
     -Name "Git" `
@@ -183,7 +217,7 @@ if (-not $allToolsFound) {
 }
 
 Write-Host ""
-Write-Host "=== Running v0.2.0 Security Constitution Scan ===" -ForegroundColor Cyan
+Write-Host "=== Running $CurrentVersion Security Constitution Scan ===" -ForegroundColor Cyan
 $securityArgs = @()
 $securityArgs += $script:PythonArgs
 $securityArgs += "scripts/security-check.py"
@@ -191,7 +225,12 @@ $securityArgs += "scripts/security-check.py"
 Stop-IfFailed "Security constitution scan"
 
 Write-Host ""
-Write-Host "=== Proceeding with Sprint 2 Deployment Commands ===" -ForegroundColor Cyan
+Write-Host "=== Running Sprint 7 static onboarding gate ===" -ForegroundColor Cyan
+npm run sprint7:check
+Stop-IfFailed "Sprint 7 static onboarding gate"
+
+Write-Host ""
+Write-Host "=== Proceeding with $CurrentVersion Deployment Commands ===" -ForegroundColor Cyan
 
 Write-Host "Applying database migrations..." -ForegroundColor Cyan
 if (Get-Command "supabase" -ErrorAction SilentlyContinue) {
@@ -201,29 +240,11 @@ if (Get-Command "supabase" -ErrorAction SilentlyContinue) {
 }
 Stop-IfFailed "Supabase database migration"
 
-Write-Host "Deploying Edge Function: broker-upload-lead..." -ForegroundColor Cyan
-if (Get-Command "supabase" -ErrorAction SilentlyContinue) {
-    supabase functions deploy broker-upload-lead
-} else {
-    npx supabase functions deploy broker-upload-lead
-}
-Stop-IfFailed "broker-upload-lead deployment"
-
-Write-Host "Deploying Edge Function: initiate-call..." -ForegroundColor Cyan
-if (Get-Command "supabase" -ErrorAction SilentlyContinue) {
-    supabase functions deploy initiate-call
-} else {
-    npx supabase functions deploy initiate-call
-}
-Stop-IfFailed "initiate-call deployment"
-
-Write-Host "Deploying Edge Function: exotel-callback..." -ForegroundColor Cyan
-if (Get-Command "supabase" -ErrorAction SilentlyContinue) {
-    supabase functions deploy exotel-callback
-} else {
-    npx supabase functions deploy exotel-callback
-}
-Stop-IfFailed "exotel-callback deployment"
+$Sprint1Functions = @(
+    "broker-upload-lead",
+    "initiate-call",
+    "exotel-callback"
+)
 
 $Sprint2Functions = @(
     "create-site-visit",
@@ -233,7 +254,61 @@ $Sprint2Functions = @(
     "broker-review-site-visit"
 )
 
-foreach ($func in $Sprint2Functions) {
+$Sprint3Functions = @(
+    "admin-pilot-action",
+    "dispute-engine",
+    "calculate-trust-score"
+)
+
+$Sprint4Functions = @(
+    "flag-abuse-event",
+    "resolve-abuse-event",
+    "generate-risk-summary",
+    "create-risk-notification",
+    "acknowledge-risk-notification",
+    "run-trust-decay"
+)
+
+$Sprint5Functions = @(
+    "route-incoming-leads",
+    "run-payout-eligibility"
+)
+
+$Sprint6Functions = @(
+    "generate-payout-statement",
+    "incident-response"
+)
+
+$Sprint7Functions = @(
+    "create-organization",
+    "invite-user",
+    "accept-invite",
+    "assign-role",
+    "activate-user",
+    "deactivate-user",
+    "pause-organization",
+    "resume-organization",
+    "update-permission-template",
+    "suspend-user"
+)
+
+$Sprint9Functions = @(
+    "check-rate-limit",
+    "generate-diagnostics",
+    "system-health-check"
+)
+
+$PracticalMVPFunctions = @(
+    "manage-external-broker",
+    "initiate-broker-call",
+    "lead-from-broker",
+    "manage-caller-workflow"
+)
+
+$AllFunctions = $Sprint1Functions + $Sprint2Functions + $Sprint3Functions + $Sprint4Functions + $Sprint5Functions + $Sprint6Functions + $Sprint7Functions + $Sprint9Functions + $PracticalMVPFunctions
+
+
+foreach ($func in $AllFunctions) {
     Write-Host "Deploying Edge Function: $func..." -ForegroundColor Cyan
     if (Get-Command "supabase" -ErrorAction SilentlyContinue) {
         supabase functions deploy $func
@@ -246,13 +321,13 @@ foreach ($func in $Sprint2Functions) {
 Write-Host "Building Flutter PWA..." -ForegroundColor Cyan
 Push-Location "flutter_app"
 try {
-    flutter pub get
+    & $script:FlutterExecutable pub get
     Stop-IfFailed "Flutter pub get"
 
-    flutter analyze
+    & $script:FlutterExecutable analyze
     Stop-IfFailed "Flutter analyze"
 
-    flutter build web --release
+    & $script:FlutterExecutable build web --release
     Stop-IfFailed "Flutter web build"
 }
 finally {
@@ -260,4 +335,4 @@ finally {
 }
 
 Write-Host ""
-Write-Host "Deployment commands completed. Sprint 2 is not verified until SPRINT_2_SMOKE_TEST_RESULTS.md is updated with real smoke-test results." -ForegroundColor Green
+Write-Host "Deployment commands completed. $CurrentVersion is not accepted until SPRINT_10_SMOKE_TEST_RESULTS.md is updated with real smoke-test evidence." -ForegroundColor Green

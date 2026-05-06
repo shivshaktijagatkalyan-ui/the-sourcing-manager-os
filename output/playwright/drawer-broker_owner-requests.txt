@@ -1,0 +1,5 @@
+http://localhost:3000/assets/FontManifest.json
+http://localhost:3000/assets/fonts/MaterialIcons-Regular.otf
+https://fonts.gstatic.com/s/roboto/v32/KFOmCnqEu92Fr1Me4GZLCzYlKw.woff2
+http://localhost:3000/assets/AssetManifest.bin.json
+https://fonts.gstatic.com/s/a/ecdb53099b1a68cd24c6900ea5beeafec81bd3c8cb9d0f3c51b9986583ba3982.ttf

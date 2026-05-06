@@ -1,46 +1,42 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// @ts-ignore: Deno import
+import { serve } from 'std/http/server.ts'
+import { adminClient, currentUser, requirePermission, safeJson, corsHeaders } from '../_shared/sprint7.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+declare const Deno: any;
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+serve(async (req: Request): Promise<Response> => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
+  if (req.method !== 'POST') return safeJson({ ok: false, reason: 'invalid_method' }, 405)
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
+    const user = await currentUser(req)
+    if (!user) return safeJson({ ok: false, reason: 'unauthorized' }, 401)
 
-    const serviceRoleSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const admin = adminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) throw new Error('Unauthorized')
+    // 1. Fetch Pilot Context
+    const { data: pilot, error: pilotError } = await admin
+      .from('pilot_users')
+      .select('org_id, status, organizations(status)')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    // Sprint 3: Pilot Active Check
-    const { data: isActive, error: activeError } = await serviceRoleSupabase.rpc('is_pilot_active', { p_user_id: user.id })
-    if (activeError || !isActive) {
-        return new Response(JSON.stringify({ ok: false, reason: 'pilot_user_inactive_or_unconfigured' }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 403,
-        })
+    if (pilotError || !pilot || pilot.status !== 'active' || pilot.organizations?.status !== 'active') {
+      return safeJson({ ok: false, reason: 'access_blocked_operational' }, 403)
     }
+
+    // 2. Strict Permission Check
+    const allowed = await requirePermission(admin, user.id, 'can_review_site_visits', pilot.org_id)
+    if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
 
     const { site_visit_id, action, reason } = await req.json()
 
     if (!['approve', 'reject'].includes(action)) {
-      throw new Error('Invalid action')
+      return safeJson({ ok: false, reason: 'invalid_input' }, 400)
     }
 
-    // 1. Fetch Visit (Service Role)
-    const { data: visit, error: fetchError } = await serviceRoleSupabase
+    // 3. Fetch Visit
+    const { data: visit, error: fetchError } = await admin
       .from('site_visits')
       .select('id, broker_id, status')
       .eq('id', site_visit_id)
@@ -48,28 +44,24 @@ serve(async (req) => {
       .single()
 
     if (fetchError || !visit || visit.status !== 'photo_verified') {
-        throw new Error('Invalid visit state for review')
+      return safeJson({ ok: false, reason: 'invalid_state' }, 409)
     }
 
-    // 2. Atomic Secure Update (Sprint 3 v2)
-    const { data: result, error: updateError } = await serviceRoleSupabase.rpc('broker_review_site_visit_v2', {
+    // 4. Atomic Secure Update
+    const { data: result, error: updateError } = await admin.rpc('broker_review_site_visit_v2', {
         p_visit_id: site_visit_id,
         p_actor_id: user.id,
         p_action: action,
         p_reason: reason
     })
 
-    if (updateError || !result || !result.ok) throw new Error('Review submission failed')
+    if (updateError || !result || !result.ok) {
+      return safeJson({ ok: false, reason: 'update_failed' }, 500)
+    }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
+    return safeJson({ ok: true })
 
-  } catch (error) {
-    return new Response(JSON.stringify({ ok: false, reason: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    })
+  } catch (err) {
+    return safeJson({ ok: false, reason: 'internal_server_error' }, 500)
   }
 })

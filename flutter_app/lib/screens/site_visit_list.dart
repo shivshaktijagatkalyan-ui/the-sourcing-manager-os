@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import '../app_config.dart';
+import '../utils/training_runtime.dart';
 import 'site_visit_verify.dart';
 
 class SiteVisitListScreen extends StatefulWidget {
@@ -11,15 +13,31 @@ class SiteVisitListScreen extends StatefulWidget {
 }
 
 class _SiteVisitListScreenState extends State<SiteVisitListScreen> {
+  final TrainingRuntime _trainingRuntime = TrainingRuntime.instance;
   late Future<List<Map<String, dynamic>>> _futureVisits;
 
   @override
   void initState() {
     super.initState();
+    if (!AppConfig.isSupabaseConfigured) {
+      _trainingRuntime.addListener(_refresh);
+    }
     _futureVisits = _loadVisits();
   }
 
+  @override
+  void dispose() {
+    if (!AppConfig.isSupabaseConfigured) {
+      _trainingRuntime.removeListener(_refresh);
+    }
+    super.dispose();
+  }
+
   Future<List<Map<String, dynamic>>> _loadVisits() async {
+    if (!AppConfig.isSupabaseConfigured) {
+      return _trainingRuntime.siteVisitsForManager(TrainingRuntime.sourcingManagerId);
+    }
+
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) return [];

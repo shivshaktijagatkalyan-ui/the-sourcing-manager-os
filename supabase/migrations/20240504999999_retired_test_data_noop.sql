@@ -1,0 +1,8 @@
+-- Retired migration placeholder.
+--
+-- The remote Supabase migration history contains version 20240504999999.
+-- That version was previously used for test/stress data and must not be
+-- replayed into production environments.
+--
+-- Keep this no-op file so local migration history matches remote history
+-- without inserting fake leads, sensitive rows, users, or site visits.

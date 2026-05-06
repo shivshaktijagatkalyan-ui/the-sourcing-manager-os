@@ -70,16 +70,9 @@ Docs: [supabase.com/docs/guides/cli](https://supabase.com/docs/guides/cli)
 
 Flutter is required for PWA analysis and production web build.
 
-```powershell
-winget install Google.Flutter
-```
-
-Restart PowerShell and check:
-
-```powershell
-flutter --version
-flutter doctor
-```
+*   Manual Install: Extract to `C:\src\flutter`
+*   Add to PATH: `$env:PATH += ";C:\src\flutter\bin"`
+*   Verify: `flutter --version`
 
 Docs: [docs.flutter.dev/get-started/install/windows](https://docs.flutter.dev/get-started/install/windows)
 
@@ -92,7 +85,23 @@ winget install Git.Git
 git --version
 ```
 
-## 7. PATH Verification
+## 7. CodeRabbit CLI (WSL Fix)
+
+If `unzip` is missing in WSL, run from PowerShell:
+
+```powershell
+wsl -d Ubuntu -u root -- apt update
+wsl -d Ubuntu -u root -- apt install -y unzip curl git
+```
+
+Then inside Ubuntu:
+
+```bash
+curl -fsSL https://cli.coderabbit.ai/install.sh | sh
+/home/ibugg3d/.local/bin/coderabbit auth login --agent
+```
+
+## 8. PATH Verification
 
 After installing tools, restart PowerShell 7 and run:
 

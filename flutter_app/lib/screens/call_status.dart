@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app_config.dart';
+import '../utils/training_runtime.dart';
+
 
 class CallStatusDialog extends StatefulWidget {
   final String leadId;
-  const CallStatusDialog({super.key, required this.leadId});
+  final String targetType;
+  const CallStatusDialog({super.key, required this.leadId, this.targetType = 'lead'});
 
   @override
   State<CallStatusDialog> createState() => _CallStatusDialogState();
@@ -26,6 +29,20 @@ class _CallStatusDialogState extends State<CallStatusDialog> {
       _reason = null;
     });
 
+    if (AppConfig.isTrainingMode) {
+      final response = await TrainingRuntime.instance.initiateCall(widget.leadId, type: widget.targetType);
+      if (!mounted) return;
+      if (response['ok'] == true) {
+        setState(() => _status = '${response['status'] ?? 'queued'}');
+      } else {
+        setState(() {
+          _status = response['status'] ?? 'blocked';
+          _reason = response['reason'] ?? 'access_denied';
+        });
+      }
+      return;
+    }
+
     if (!AppConfig.isSupabaseConfigured) {
       await Future<void>.delayed(const Duration(milliseconds: 700));
       if (!mounted) return;
@@ -34,9 +51,12 @@ class _CallStatusDialogState extends State<CallStatusDialog> {
     }
 
     try {
+      final functionName = widget.targetType == 'lead' ? 'initiate-call' : 'initiate-broker-call';
+      final body = widget.targetType == 'lead' ? {'lead_id': widget.leadId} : {'broker_id': widget.leadId};
+      
       final response = await Supabase.instance.client.functions.invoke(
-        'initiate-call',
-        body: {'lead_id': widget.leadId},
+        functionName,
+        body: body,
       );
 
       final data = response.data;

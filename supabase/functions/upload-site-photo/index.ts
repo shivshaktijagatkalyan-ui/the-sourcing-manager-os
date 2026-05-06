@@ -1,91 +1,84 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { crypto } from 'https://deno.land/std@0.168.0/crypto/mod.ts'
+// @ts-ignore: Deno import
+import { serve } from 'std/http/server.ts'
+import { adminClient, currentUser, requirePermission, safeJson, recordAudit, corsHeaders } from '../_shared/sprint7.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
 
-serve(async (req) => {
+
+serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
+    const user = await currentUser(req)
+    if (!user) return safeJson({ ok: false, reason: 'unauthorized' }, 401)
 
-    const serviceRoleSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const admin = adminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) throw new Error('Unauthorized')
+    // 1. Fetch Pilot Context
+    const { data: pilot, error: pilotError } = await admin
+      .from('pilot_users')
+      .select('org_id, status, organizations(status)')
+      .eq('user_id', user.id)
+      .maybeSingle()
 
-    // Sprint 3: Pilot Active Check
-    const { data: isActive, error: activeError } = await serviceRoleSupabase.rpc('is_pilot_active', { p_user_id: user.id })
-    if (activeError || !isActive) {
-        return new Response(JSON.stringify({ ok: false, reason: 'pilot_user_inactive_or_unconfigured' }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 403,
-        })
+    if (pilotError || !pilot || pilot.status !== 'active' || pilot.organizations?.status !== 'active') {
+      return safeJson({ ok: false, reason: 'access_blocked_operational' }, 403)
     }
+
+    // 2. Strict Permission Check
+    const allowed = await requirePermission(admin, user.id, 'can_verify_site_visits', pilot.org_id)
+    if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
 
     const formData = await req.formData()
     const file = formData.get('photo') as File
     const site_visit_id = formData.get('site_visit_id') as string
 
-    if (!file || !site_visit_id) throw new Error('Missing file or site_visit_id')
+    if (!file || !site_visit_id) {
+      return safeJson({ ok: false, reason: 'invalid_input' }, 400)
+    }
 
-    // 1. Validate Visit State (Service Role)
-    const { data: visit, error: fetchError } = await serviceRoleSupabase
+    // 3. Validate Visit State
+    const { data: visit, error: fetchError } = await admin
       .from('site_visits')
-      .select('id, lead_id, status, gps_status')
+      .select('id, lead_id, status')
       .eq('id', site_visit_id)
       .eq('sourcing_manager_id', user.id)
       .single()
 
     if (fetchError || !visit || visit.status !== 'gps_verified') {
-        throw new Error('Invalid visit state for photo upload')
+      return safeJson({ ok: false, reason: 'invalid_state' }, 409)
     }
 
-    // 2. Calculate SHA-256 for Evidence Chain
+    // 4. Calculate SHA-256 for Evidence Chain
     const arrayBuffer = await file.arrayBuffer()
     const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer)
     const hashArray = Array.from(new Uint8Array(hashBuffer))
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 
-    // 3. Upload to Storage (Service Role)
+    // 5. Upload to Storage
     const filePath = `evidence/${visit.lead_id}/${site_visit_id}/${hashHex}.jpg`
-    const { error: uploadError } = await serviceRoleSupabase.storage
+    const { error: uploadError } = await admin.storage
       .from('site-evidence')
-      .upload(filePath, file, { 
+      .upload(filePath, file, {
           contentType: 'image/jpeg',
-          upsert: false // Non-overwrite policy
+          upsert: false
       })
 
-    if (uploadError) throw uploadError
+    if (uploadError) throw new Error('storage_upload_failed')
 
-    // 4. Atomic Secure Update (Sprint 3 v2)
-    const { data: result, error: updateError } = await serviceRoleSupabase.rpc('upload_site_photo_v2', {
+    // 6. Atomic Secure Update
+    const { data: result, error: updateError } = await admin.rpc('upload_site_photo_v2', {
         p_visit_id: site_visit_id,
         p_actor_id: user.id,
         p_photo_sha256: hashHex
     })
 
-    if (updateError || !result || !result.ok) throw new Error('Record update failed')
+    if (updateError || !result || !result.ok) {
+      return safeJson({ ok: false, reason: 'update_failed' }, 500)
+    }
 
-    return new Response(JSON.stringify({ ok: true, hash: hashHex }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return safeJson({ ok: true, hash: hashHex })
 
-  } catch (error) {
-    return new Response(JSON.stringify({ ok: false, reason: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    })
+  } catch (err) {
+    return safeJson({ ok: false, reason: 'internal_server_error' }, 500)
   }
 })

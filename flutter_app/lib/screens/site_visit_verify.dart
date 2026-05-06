@@ -4,6 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import '../app_config.dart';
+import '../utils/training_runtime.dart';
+
 
 class SiteVisitVerifyScreen extends StatefulWidget {
   final String visitId;
@@ -26,6 +28,18 @@ class _SiteVisitVerifyScreenState extends State<SiteVisitVerifyScreen> {
 
   Future<void> _loadVisit() async {
     try {
+      if (AppConfig.isTrainingMode) {
+        final runtime = TrainingRuntime.instance;
+        // Mock visit data for training
+        final visits = runtime.siteVisitsForManager(TrainingRuntime.sourcingManagerId);
+        final visit = visits.firstWhere((v) => v['id'] == widget.visitId);
+        setState(() {
+          _visitData = visit;
+          _isLoading = false;
+        });
+        return;
+      }
+
       final client = Supabase.instance.client;
       final data = await client
           .from('site_visits')
@@ -65,6 +79,11 @@ class _SiteVisitVerifyScreenState extends State<SiteVisitVerifyScreen> {
   }
 
   Future<void> _startVisit() async {
+    if (AppConfig.isTrainingMode) {
+      await TrainingRuntime.instance.startSiteVisit(widget.visitId);
+      await _loadVisit();
+      return;
+    }
     await _invokeEdgeFunction('start-site-visit', {'site_visit_id': widget.visitId});
   }
 
@@ -83,6 +102,12 @@ class _SiteVisitVerifyScreenState extends State<SiteVisitVerifyScreen> {
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
+
+      if (AppConfig.isTrainingMode) {
+        await TrainingRuntime.instance.verifySiteGps(widget.visitId, position.latitude, position.longitude);
+        await _loadVisit();
+        return;
+      }
 
       await _invokeEdgeFunction('verify-site-gps', {
         'site_visit_id': widget.visitId,
@@ -103,6 +128,12 @@ class _SiteVisitVerifyScreenState extends State<SiteVisitVerifyScreen> {
       final picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: ImageSource.camera);
       if (image == null) return;
+
+      if (AppConfig.isTrainingMode) {
+        await TrainingRuntime.instance.uploadSitePhoto(widget.visitId);
+        await _loadVisit();
+        return;
+      }
 
       final client = Supabase.instance.client;
       final bytes = await image.readAsBytes();

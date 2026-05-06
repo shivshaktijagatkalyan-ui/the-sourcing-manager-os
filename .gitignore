@@ -1,6 +1,13 @@
 node_modules
 .env
+.env.local
+*.env
 .DS_Store
+
 dist
 .gemini
 supabase/.temp
+.vscode/
+scratch/
+.playwright-cli/
+*.log

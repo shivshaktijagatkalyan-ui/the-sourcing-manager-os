@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../app_config.dart';
+import '../utils/training_runtime.dart';
 
 class BrokerReviewListScreen extends StatefulWidget {
   const BrokerReviewListScreen({super.key});
@@ -18,6 +20,10 @@ class _BrokerReviewListScreenState extends State<BrokerReviewListScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _loadPending() async {
+    if (AppConfig.isTrainingMode) {
+      final visits = TrainingRuntime.instance.siteVisitsForManager(TrainingRuntime.sourcingManagerId);
+      return visits.where((v) => v['status'] == 'broker_review_pending').toList();
+    }
     final client = Supabase.instance.client;
     final response = await client
         .from('site_visits')
@@ -29,6 +35,16 @@ class _BrokerReviewListScreenState extends State<BrokerReviewListScreen> {
 
   Future<void> _processReview(String visitId, String action, {String? reason}) async {
     try {
+      if (AppConfig.isTrainingMode) {
+        await TrainingRuntime.instance.brokerReviewSiteVisit(visitId, action);
+        if (!mounted) return;
+        setState(() {
+          _futurePending = _loadPending();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Visit ${action}ed successfully.')));
+        return;
+      }
+
       final client = Supabase.instance.client;
       final response = await client.functions.invoke('broker-review-site-visit', body: {
         'site_visit_id': visitId,

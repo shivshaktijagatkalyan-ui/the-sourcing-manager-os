@@ -6,7 +6,8 @@ License: AGPLv3
 Report purpose: Handoff summary for Antigravity and acceptance tracking
 Status: **ACCEPTANCE PASSED - AUTHORIZED**
 
-### Acceptance Gate: Live Stress Tests
+## Acceptance Gate: Live Stress Tests
+
 Status: **PASSED**
 
 | Test | Status | Result |

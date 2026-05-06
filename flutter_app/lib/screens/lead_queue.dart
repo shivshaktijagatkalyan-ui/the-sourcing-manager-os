@@ -20,7 +20,7 @@ class _LeadQueueScreenState extends State<LeadQueueScreen> {
   }
 
   Future<List<LeadQueueItem>> _loadLeads() async {
-    if (!AppConfig.isSupabaseConfigured) return LeadQueueItem.demoItems;
+    if (!AppConfig.isSupabaseConfigured || AppConfig.isTrainingMode) return LeadQueueItem.demoItems;
 
     try {
       final client = Supabase.instance.client;
@@ -236,20 +236,32 @@ class LeadCard extends StatelessWidget {
                 bottomRight: Radius.circular(16),
               ),
             ),
-            child: Row(
+            child: Column(
               children: [
-                _LoanBadge(active: lead.hasActiveLoan),
-                const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: lead.hasActiveLoan ? () => _initiateSecureCall(context) : null,
-                  icon: const Icon(Icons.call),
-                  label: const Text('Secure PSTN Call'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.withValues(alpha: 0.2),
-                  ),
+                Row(
+                  children: [
+                    _LoanBadge(active: lead.hasActiveLoan),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: lead.hasActiveLoan ? () => _initiateSecureCall(context) : null,
+                      icon: const Icon(Icons.call),
+                      label: const Text('Secure PSTN Call'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey.withValues(alpha: 0.2),
+                      ),
+                    ),
+                  ],
                 ),
+                if (!lead.hasActiveLoan)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Call karne ke liye "Data Loan" zaroori hai. (Active loan required for calling.)',
+                      style: TextStyle(fontSize: 10, color: Colors.orangeAccent),
+                    ),
+                  ),
               ],
             ),
           ),

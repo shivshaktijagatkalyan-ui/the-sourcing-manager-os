@@ -21,6 +21,7 @@ BLOCKED_TERMS = [
     "console.log(phone",
     "console.log(payload",
     "raw_provider_payload",
+    "broker_phone",
 ]
 
 BLOCKED_PATTERNS = [
@@ -32,6 +33,20 @@ BLOCKED_PATTERNS = [
 CONTACT_WORD_ALLOWED = {
     "flutter_app/lib/screens/broker_upload.dart",
     "supabase/functions/broker-upload-lead/index.ts",
+    "supabase/functions/manage-external-broker/index.ts",
+    "supabase/functions/flag-abuse-event/index.ts",
+    "flutter_app/lib/screens/add_broker_screen.dart",
+    "flutter_app/lib/screens/broker_crm_list.dart",
+    "flutter_app/lib/screens/broker_detail_screen.dart",
+    "flutter_app/lib/screens/broker_followup_queue.dart",
+    "flutter_app/lib/screens/activation_pipeline_board.dart",
+    "flutter_app/lib/screens/add_lead_from_broker.dart",
+    "flutter_app/lib/screens/sourcing_manager_dashboard.dart",
+    "flutter_app/lib/screens/broker_sourced_site_visits.dart",
+    "flutter_app/lib/screens/caller_dashboard_screen.dart",
+    "flutter_app/lib/screens/caller_lead_queue_screen.dart",
+    "supabase/functions/lead-from-broker/index.ts",
+    "supabase/functions/manage-caller-workflow/index.ts",
 }
 
 
@@ -59,6 +74,8 @@ def main() -> int:
         for pattern, reason in BLOCKED_PATTERNS:
             if pattern.search(text):
                 violations.append(f"{rel}: {reason}")
+
+
 
         if rel not in CONTACT_WORD_ALLOWED and re.search(r"\b(phone|mobile|whatsapp)\b", text, re.IGNORECASE):
             violations.append(f"{rel}: contact wording outside broker upload flow")

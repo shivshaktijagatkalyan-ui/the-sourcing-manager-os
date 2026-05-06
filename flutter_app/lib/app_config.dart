@@ -7,4 +7,7 @@ class AppConfig {
       supabaseAnonKey.isNotEmpty &&
       !supabaseUrl.contains('your-project') &&
       supabaseAnonKey != 'your-anon-key';
+
+  static bool isTrainingMode = true;
+  static String mockRole = 'sourcing_manager'; // Default role for field pilot (Vinod Gupta)
 }

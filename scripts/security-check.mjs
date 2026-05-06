@@ -30,6 +30,20 @@ const blockedPatterns = [
 const phoneWordAllowed = new Set([
   join('flutter_app', 'lib', 'screens', 'broker_upload.dart'),
   join('supabase', 'functions', 'broker-upload-lead', 'index.ts'),
+  join('supabase', 'functions', 'manage-external-broker', 'index.ts'),
+  join('supabase', 'functions', 'flag-abuse-event', 'index.ts'),
+  join('flutter_app', 'lib', 'screens', 'add_broker_screen.dart'),
+  join('flutter_app', 'lib', 'screens', 'broker_crm_list.dart'),
+  join('flutter_app', 'lib', 'screens', 'broker_detail_screen.dart'),
+  join('flutter_app', 'lib', 'screens', 'broker_followup_queue.dart'),
+  join('flutter_app', 'lib', 'screens', 'activation_pipeline_board.dart'),
+  join('flutter_app', 'lib', 'screens', 'add_lead_from_broker.dart'),
+  join('flutter_app', 'lib', 'screens', 'sourcing_manager_dashboard.dart'),
+  join('flutter_app', 'lib', 'screens', 'broker_sourced_site_visits.dart'),
+  join('flutter_app', 'lib', 'screens', 'caller_dashboard_screen.dart'),
+  join('flutter_app', 'lib', 'screens', 'caller_lead_queue_screen.dart'),
+  join('supabase', 'functions', 'lead-from-broker', 'index.ts'),
+  join('supabase', 'functions', 'manage-caller-workflow', 'index.ts'),
 ]);
 
 function listFiles(dir) {

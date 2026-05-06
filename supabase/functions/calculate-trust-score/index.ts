@@ -1,41 +1,53 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from 'std/http/server.ts'
+import { adminClient, currentUser, requirePermission, safeJson } from '../_shared/sprint7.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+serve(async (req: Request): Promise<Response> => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
 
   try {
-    const serviceRoleSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const user = await currentUser(req)
+    if (!user) return safeJson({ ok: false, reason: 'unauthorized' }, 401)
+
+    const admin = adminClient()
+
+    // 1. Fetch Pilot Context
+    const { data: pilot, error: pilotError } = await admin
+      .from('pilot_users')
+      .select('org_id, status')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (pilotError || !pilot || pilot.status !== 'active') {
+      return safeJson({ ok: false, reason: 'access_blocked' }, 403)
+    }
+
+    // 2. Strict Permission Check
+    const allowed = await requirePermission(admin, user.id, 'can_view_audit_logs', pilot.org_id)
+    if (!allowed) return safeJson({ ok: false, reason: 'forbidden' }, 403)
 
     const { entity_id, entity_type } = await req.json()
 
-    if (!entity_id || !entity_type) throw new Error('Missing params')
+    if (!entity_id || !entity_type) {
+      return safeJson({ ok: false, reason: 'invalid_input' }, 400)
+    }
 
-    // 1. Fetch Audit Events
-    const { data: events, error: eventError } = await serviceRoleSupabase
+    // 3. Fetch Audit Events
+    const { data: events, error: eventError } = await admin
       .from('audit_events')
       .select('event_type, event_context')
       .eq('actor_id', entity_id)
 
-    if (eventError) throw eventError
+    if (eventError) throw new Error('event_fetch_failed')
 
-    // 2. Simple Linear Scoring Model
+    // 4. Scoring Model
     let score = 3.0; // Start at neutral
-    let components = {
+    const components = {
         positive_events: 0,
         negative_events: 0,
         total_events: events.length
     }
 
-    events.forEach(event => {
+    events.forEach((event: any) => {
         if (event.event_type === 'site_visit_state_change') {
             const ns = event.event_context.new_status
             if (ns === 'completed' || ns === 'gps_verified' || ns === 'photo_verified') {
@@ -56,11 +68,10 @@ serve(async (req) => {
         }
     })
 
-    // Clamp score
     score = Math.max(0, Math.min(5, score))
 
-    // 3. Upsert Trust Score
-    const { error: updateError } = await serviceRoleSupabase
+    // 5. Upsert Trust Score
+    const { error: updateError } = await admin
       .from('trust_scores')
       .upsert({
           entity_id,
@@ -70,16 +81,11 @@ serve(async (req) => {
           last_updated_at: new Date().toISOString()
       }, { onConflict: 'entity_id, entity_type' })
 
-    if (updateError) throw updateError
+    if (updateError) throw new Error('upsert_failed')
 
-    return new Response(JSON.stringify({ ok: true, score: score.toFixed(2) }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return safeJson({ ok: true, score: score.toFixed(2) })
 
-  } catch (error) {
-    return new Response(JSON.stringify({ ok: false, reason: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    })
+  } catch (err) {
+    return safeJson({ ok: false, reason: 'internal_server_error' }, 500)
   }
 })

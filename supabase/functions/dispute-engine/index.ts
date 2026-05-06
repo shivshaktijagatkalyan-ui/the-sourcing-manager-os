@@ -1,52 +1,37 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { adminClient, currentUser, requirePermission, safeJson, recordAudit, validUuid } from '../_shared/sprint7.ts'
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
+    const user = await currentUser(req)
+    if (!user) return safeJson({ ok: false, reason: 'unauthorized' }, 401)
 
-    const serviceRoleSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) throw new Error('Unauthorized')
-
+    const admin = adminClient()
     const { action, payload } = await req.json()
 
-    // 1. Get User Org
-    const { data: pilotUser, error: pilotError } = await serviceRoleSupabase
+    // 1. Get User Org Context
+    const { data: pilot, error: pilotError } = await admin
       .from('pilot_users')
-      .select('org_id, role, status')
+      .select('org_id, status')
       .eq('user_id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (pilotError || !pilotUser || pilotUser.status !== 'active') {
-      return new Response(JSON.stringify({ ok: false, reason: 'inactive_pilot_user' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 403,
-      })
+    if (pilotError || !pilot || pilot.status !== 'active') {
+      return safeJson({ ok: false, reason: 'pilot_user_inactive' }, 403)
     }
 
     if (action === 'open_dispute') {
+      const allowed = await requirePermission(admin, user.id, 'can_view_disputes', pilot.org_id)
+      if (!allowed) return safeJson({ ok: false, reason: 'forbidden' }, 403)
+
       const { target_id, target_type, type, comment } = payload
-      
-      const { data: dispute, error: dError } = await serviceRoleSupabase
+
+      const { data: dispute, error: dError } = await admin
         .from('disputes')
         .insert({
-            org_id: pilotUser.org_id,
+            org_id: pilot.org_id,
             target_id,
             target_type,
             type,
@@ -55,38 +40,38 @@ serve(async (req) => {
         .select()
         .single()
 
-      if (dError) throw dError
+      if (dError) throw new Error('dispute_creation_failed')
 
-      // Add initial event
-      await serviceRoleSupabase
-        .from('dispute_events')
-        .insert({
-            dispute_id: dispute.id,
-            actor_id: user.id,
-            event_type: 'dispute_opened',
-            comment
-        })
-
-      return new Response(JSON.stringify({ ok: true, dispute_id: dispute.id }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      await admin.from('dispute_events').insert({
+          dispute_id: dispute.id,
+          actor_id: user.id,
+          event_type: 'dispute_opened',
+          comment
       })
+
+      await recordAudit(admin, user.id, pilot.org_id, null, 'dispute_opened', { dispute_id: dispute.id, type })
+
+      return safeJson({ ok: true, dispute_id: dispute.id })
     }
 
     if (action === 'add_event') {
         const { dispute_id, event_type, comment, evidence_refs } = payload
-        
+
+        const allowed = await requirePermission(admin, user.id, 'can_view_disputes', pilot.org_id)
+        if (!allowed) return safeJson({ ok: false, reason: 'forbidden' }, 403)
+
         // Verify org ownership
-        const { data: dispute, error: dError } = await serviceRoleSupabase
+        const { data: dispute, error: dError } = await admin
             .from('disputes')
             .select('org_id')
             .eq('id', dispute_id)
             .single()
-        
-        if (dError || dispute.org_id !== pilotUser.org_id) {
-            throw new Error('Unauthorized dispute access')
+
+        if (dError || dispute.org_id !== pilot.org_id) {
+            return safeJson({ ok: false, reason: 'forbidden_dispute_access' }, 403)
         }
 
-        const { data: event, error: eError } = await serviceRoleSupabase
+        const { data: event, error: eError } = await admin
             .from('dispute_events')
             .insert({
                 dispute_id,
@@ -97,50 +82,41 @@ serve(async (req) => {
             })
             .select()
             .single()
-        
-        if (eError) throw eError
-        return new Response(JSON.stringify({ ok: true, event_id: event.id }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+
+        if (eError) throw new Error('event_creation_failed')
+
+        return safeJson({ ok: true, event_id: event.id })
     }
 
     if (action === 'resolve_dispute') {
         const { dispute_id, resolution_status, comment } = payload
-        
-        if (pilotUser.role !== 'admin') {
-            throw new Error('Only admins can resolve disputes')
-        }
 
-        const { error: uError } = await serviceRoleSupabase
+        const allowed = await requirePermission(admin, user.id, 'can_resolve_disputes', pilot.org_id)
+        if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
+
+        const { error: uError } = await admin
             .from('disputes')
             .update({ status: resolution_status, updated_at: new Date().toISOString() })
             .eq('id', dispute_id)
+            .eq('org_id', pilot.org_id) // Ensure org scope
 
-        if (uError) throw uError
+        if (uError) throw new Error('resolution_failed')
 
-        await serviceRoleSupabase
-            .from('dispute_events')
-            .insert({
-                dispute_id,
-                actor_id: user.id,
-                event_type: 'dispute_resolved',
-                comment
-            })
-
-        return new Response(JSON.stringify({ ok: true }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        await admin.from('dispute_events').insert({
+            dispute_id,
+            actor_id: user.id,
+            event_type: 'dispute_resolved',
+            comment
         })
+
+        await recordAudit(admin, user.id, pilot.org_id, null, 'dispute_resolved', { dispute_id, status: resolution_status })
+
+        return safeJson({ ok: true })
     }
 
-    return new Response(JSON.stringify({ ok: false, reason: 'unknown_action' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+    return safeJson({ ok: false, reason: 'unknown_action' }, 400)
 
-  } catch (error) {
-    return new Response(JSON.stringify({ ok: false, reason: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
-    })
+  } catch (err) {
+    return safeJson({ ok: false, reason: 'internal_server_error' }, 500)
   }
 })

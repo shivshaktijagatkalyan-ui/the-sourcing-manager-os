@@ -1,0 +1,295 @@
+# Final Upgraded Project Panel Report
+
+## 1. Summary
+- Overall status: PARTIAL
+- Super Admin Panel: PARTIAL
+- Sourcing Manager Panel: PARTIAL
+- Broker Panel: PARTIAL
+- Caller Panel: READY
+- Role-filtered drawer: READY
+- Security status: PASS
+- Build status: PASS
+
+## 2. Super Admin Panel
+- Screens:
+  - `SuperAdminDashboard`
+  - linked safe admin surfaces for organizations, roles, risk, reviews, diagnostics, and system health
+- KPI cards:
+  - Total Organizations
+  - Active Projects
+  - Total Sourcing Managers
+  - Total Brokers
+  - Total Callers
+  - Total Leads
+  - Calls Attempted
+  - Site Visits Scheduled
+  - Verified Visits
+  - Active Broker Locks
+  - Open Disputes
+  - Risk Alerts
+  - System Health
+- Data sources:
+  - `organizations`
+  - `projects`
+  - `role_assignments`
+  - `brokers_public`
+  - `leads_public`
+  - `call_attempts`
+  - `site_visits`
+  - `broker_locks`
+  - `disputes`
+  - `abuse_events`
+  - `audit_events`
+  - `system_health_events`
+- Actions:
+  - Create Organization
+  - Create Project
+  - Invite User
+  - Assign Role
+  - View Safe Audit Logs
+  - View Risk
+  - View Health
+  - Broker Reviews
+  - Diagnostics
+- Security:
+  - counts and safe metadata only
+  - no phone exposure
+  - no raw Exotel payload
+  - no secrets
+  - no sensitive table frontend query
+- Status:
+  - dashboard shell is implemented and loads safely
+  - still partial because some actions route to generic shared screens rather than dedicated organization/project/lock management panels
+
+## 3. Sourcing Manager Panel
+- Screens:
+  - `SourcingManagerDashboard`
+  - linked flow to broker follow-ups, activation pipeline, add broker, lead intake, and site visits
+- KPI cards:
+  - Today’s Broker Follow-ups
+  - Hot Brokers
+  - Active Brokers
+  - New Brokers
+  - Leads Received
+  - Leads Assigned to Caller
+  - Interested Leads
+  - Site Visits Scheduled
+  - Verified Visits
+  - Top Performing Broker
+  - My Monthly Performance
+- Data sources:
+  - `brokers_public`
+  - `broker_activations`
+  - `broker_followups`
+  - `leads_public`
+  - `site_visits`
+- Actions:
+  - Add Broker
+  - Follow-ups
+  - Add Lead From Broker
+  - Site Visit Tracker
+  - Activation Pipeline
+- Security:
+  - no broker phone
+  - no customer phone
+  - no sensitive email shown
+  - no WhatsApp or `tel:` links
+  - no sensitive table query
+  - raw error text removed from UI
+- Status:
+  - premium command-center layout is in place
+  - still partial because there is no explicit secure broker call action surface from the dashboard and the requested caller-outcome KPI is only represented indirectly through current lead metrics
+
+## 4. Broker Panel
+- Screens:
+  - `BrokerDashboardScreen`
+  - linked broker upload and broker-sourced site visits views
+- KPI cards:
+  - Connected Sourcing Managers
+  - Live Projects
+  - Leads Submitted
+  - Calls Attempted on My Leads
+  - Interested Leads
+  - Site Visits Scheduled
+  - Verified Visits
+  - Active 45-Day Locks
+  - Data Loans Active
+  - Verified Performance Rank
+  - Trust Score
+- Data sources:
+  - `brokers_public`
+  - `broker_activations`
+  - `leads_public`
+  - `data_loans`
+  - `site_visits`
+  - `broker_locks`
+  - `broker_activity_logs`
+- Actions:
+  - Submit New Lead
+  - View Lead Status
+  - View Visit Status
+  - view loan state from dashboard sections
+  - view lock state from dashboard sections
+- Security:
+  - no customer phone
+  - no broker phone
+  - no frontend query to `leads_sensitive`
+  - no frontend query to `brokers_sensitive`
+  - no cross-broker or cross-org dashboard query in the updated wiring
+  - wording uses `Verified Performance Rank`
+- Status:
+  - premium broker panel is implemented and safe
+  - still partial because Grant Call Access / Revoke / Extend / Raise Issue / Approve Review are not exposed as dedicated protected broker actions from this panel yet
+
+## 5. Caller Panel
+- Screens:
+  - `CallerDashboardScreen`
+  - `CallerLeadQueueScreen`
+- KPI cards:
+  - Today’s Assigned Calls
+  - Pending Calls
+  - Completed Calls
+  - Interested Leads
+  - Call Later Follow-ups
+  - Visit Scheduled Leads
+- Data sources:
+  - `leads_public` filtered by `assigned_caller_id`
+  - `call_attempts` for the current caller
+  - safe broker relation fields from `brokers_public`
+- Actions:
+  - Secure Call
+  - update outcome through `manage-caller-workflow`
+  - move into queue
+- Security:
+  - assigned leads only
+  - secure call sends `lead_id` only
+  - no phone shown
+  - no broker phone shown
+  - no export surface
+  - no sensitive table query
+- Status: READY
+
+## 6. Role Routing
+- sourcing_manager:
+  - `RoleDashboardContainer -> SourcingManagerDashboard`
+- broker_owner:
+  - `RoleDashboardContainer -> BrokerDashboardScreen`
+- broker_agent:
+  - `RoleDashboardContainer -> BrokerDashboardScreen`
+- caller:
+  - `RoleDashboardContainer -> CallerDashboardScreen`
+- admin/platform_admin:
+  - `RoleDashboardContainer -> SuperAdminDashboard`
+- unknown fallback:
+  - `RoleDashboardContainer -> AccessRestrictedScreen`
+
+## 7. Drawer Filtering
+- sourcing_manager drawer:
+  - My Dashboard
+  - Broker CRM
+  - Add Broker
+  - Today’s Follow-ups
+  - Activation Pipeline
+  - Add Lead From Broker
+  - Site Visit Tracker
+  - Performance
+- broker drawer:
+  - My Dashboard
+  - Submit Lead
+  - My Leads
+  - My Site Visits
+  - My Data Loans
+  - My Broker Locks
+  - My Performance
+  - Payouts
+- caller drawer:
+  - My Dashboard
+  - Assigned Calls
+  - Follow-ups
+  - Outcomes
+- admin drawer:
+  - My Dashboard
+  - Organizations
+  - Projects
+  - Users & Roles
+  - Brokers
+  - Leads Overview
+  - Site Visits
+  - Locks
+  - Risk Alerts
+  - Audit
+  - System Health
+  - Settings
+- unknown drawer:
+  - Access Restricted only
+
+## 8. Security Constitution Check
+- phone exposure: none found in the upgraded panel files
+- broker phone exposure: none found
+- customer phone exposure: none found
+- masked phone: none found
+- last four: none found
+- WhatsApp/tel links: none found
+- contact export: none found
+- sensitive table frontend query: none found in the audited panel files
+- raw logs: sanitized UI error responses in updated dashboards
+- result: PASS
+
+## 9. Build Results
+- security-check.py: PASS
+- flutter analyze: PASS
+- flutter build web: PASS
+
+## 10. Bugs Found
+- `flutter_app/lib/main.dart`
+  - unknown-role drawer exposed a `Help` action instead of failing closed
+  - severity: medium
+- `flutter_app/lib/main.dart`
+  - broker drawer `Submit Lead` was routed to the sourcing-manager lead intake screen
+  - severity: medium
+- `flutter_app/lib/screens/sourcing_manager_dashboard.dart`
+  - raw exception strings were shown to the UI
+  - severity: medium
+- `flutter_app/lib/screens/caller_dashboard_screen.dart`
+  - raw exception strings were shown to the UI
+  - severity: medium
+- `flutter_app/lib/screens/broker_sourced_site_visits.dart`
+  - screen queried `leads_public(lead_alias)` even though the safe lead field is `alias`
+  - severity: medium
+- `flutter_app/lib/screens/sourcing_manager_dashboard.dart`
+  - dashboard lacked the requested follow-up queue, interested lead action view, and visit tracker
+  - severity: medium
+- `flutter_app/lib/screens/broker_dashboard_screen.dart`
+  - panel had incomplete KPI coverage for data loans, locks, and recent activity
+  - severity: medium
+- `flutter_app/lib/screens/super_admin_dashboard.dart`
+  - admin actions still point to generic shared panels for some workflows instead of dedicated management surfaces
+  - severity: medium
+
+## 11. Fixes Applied
+- `flutter_app/lib/main.dart`
+- `flutter_app/lib/screens/sourcing_manager_dashboard.dart`
+- `flutter_app/lib/screens/broker_dashboard_screen.dart`
+- `flutter_app/lib/screens/caller_dashboard_screen.dart`
+- `flutter_app/lib/screens/super_admin_dashboard.dart`
+- `flutter_app/lib/screens/broker_sourced_site_visits.dart`
+- `flutter_app/lib/screens/developer_roi_dashboard.dart`
+- `flutter_app/lib/utils/premium_ui.dart`
+
+## 12. Remaining Manual Tests
+- real Exotel broker call
+- real Exotel customer call
+- real GPS
+- camera/photo upload
+- production Supabase UAT
+- browser role login test
+
+## 13. Final Verdict
+- B. PARTIAL — FIX LIST REQUIRED
+
+Current state:
+- the upgraded premium panel system is materially improved
+- role routing is correct in code
+- drawer filtering is fail-closed for unknown roles and scoped by role
+- security scan, analyze, and build all pass
+- the product is not yet marked READY because some broker/admin actions remain summary-first and the live protected workflow still needs UAT with real auth, Exotel, GPS, camera, and production Supabase

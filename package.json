@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "security": "node scripts/security-check.mjs",
+    "build": "node scripts/flutter-build.mjs",
+    "sprint7:check": "node scripts/sprint7-static-check.mjs",
     "supabase": "supabase"
   },
   "keywords": [],

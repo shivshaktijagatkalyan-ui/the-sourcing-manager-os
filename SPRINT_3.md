@@ -1,55 +1,75 @@
-# Sprint 3: Dispute, Trust Score & Pilot Operations Layer
+# Sprint 3: Trust Systems & Pilot Operations
 
-## Goal
-Convert verified lead activity, call attempts, GPS/photo evidence, broker approvals, and commission locks into an operational trust system for pilot users.
+Version: `v0.3.0-trust`
+Status: `PASSED`
+Pilot onboarding: `ACTIVE`
+Environment reported: production project `gblvnjilpcxhygvzikwe`
 
-## Core Principles
-1. **Trust is Calculated**: Scores are derived from verified system events (audit logs), not user claims.
-2. **PII Isolation**: No phone numbers or names in timelines, disputes, or trust metrics.
-3. **Evidence-First Disputes**: Resolution relies on the evidence chain (GPS, hashes, timestamps).
-4. **Administrative Guardrails**: Role-based access with "Fail Closed" logic for disabled users/orgs.
+## Objective
 
-## Modules
+Convert verified lead activity, call attempts, GPS/photo evidence, broker approvals, and commission locks into an accountable pilot operations layer.
 
-### 1. Pilot Operations (Foundations)
-- [ ] Table: `organizations` (id, name, status, created_at)
-- [ ] Table: `pilot_users` (id, user_id, org_id, role, status, metadata)
-- [ ] RLS: Organizations and users must fail-closed if `status != 'active'`.
-- [ ] Edge Function: `admin-pilot-action` for activation/deactivation.
+Sprint 3 extends the enforcement spine and verification engine with:
 
-### 2. Evidence Timeline View
-- [ ] View: `v_evidence_timeline` (lead_id, event_type, context, timestamp)
-- [ ] Source: Aggregates from `audit_events`.
-- [ ] Privacy: Filters out any potential PII from `event_context`.
+- pilot organization controls
+- fail-closed user authorization
+- dispute lifecycle management
+- trust score calculation
+- sanitized evidence timelines
+- secure actor attribution for operational audits
 
-### 3. Dispute Resolution Engine
-- [ ] Table: `disputes` (id, target_id, target_type, org_id, type, status, created_at)
-- [ ] Table: `dispute_events` (id, dispute_id, actor_id, event_type, comment, evidence_refs)
-- [ ] Edge Functions: `open-dispute`, `add-dispute-event`, `resolve-dispute`.
+## Final Delivery Summary
 
-### 4. Trust Scoring Engine
-- [ ] Table: `trust_scores` (entity_id, entity_type, score, components_json, last_updated_at)
-- [ ] Edge Function: `calculate-trust-score` (triggered by major audit events).
-- [ ] Signals: Call connectivity, GPS verification rate, broker approval rate, dispute history.
+### 1. Core Trust Infrastructure
 
-### 5. Abuse Monitoring & Alerts
-- [ ] Dashboard View: Aggregates GPS failures and out-of-hours activity.
-- [ ] Edge Function: `flag-abuse-event` for automated alerting.
+- [x] Fail-closed pilot authorization through `public.is_pilot_active`.
+- [x] Critical verification Edge Functions block inactive users and inactive organizations.
+- [x] Secure V2 RPCs record actor attribution inside database-controlled state transitions.
+- [x] Audit events preserve old/new state transitions with actor context.
+- [x] Trust scoring ignores unattributed events where `actor_id` is missing.
 
-### 6. Flutter PWA Updates
-- [ ] Screen: Pilot Admin Dashboard.
-- [ ] Screen: Evidence Timeline (linked to lead/visit).
-- [ ] Screen: Dispute Management.
-- [ ] Screen: Trust Score Profile.
+### 2. Operational Modules
 
-## Implementation Schedule
+- [x] `organizations` table for pilot tenant control.
+- [x] `pilot_users` table for role/status gating.
+- [x] `admin-pilot-action` Edge Function for onboarding and user state management.
+- [x] `disputes` and `dispute_events` tables for operational conflict tracking.
+- [x] `dispute-engine` Edge Function for dispute lifecycle actions.
+- [x] `trust_scores` table for user/org reliability scoring.
+- [x] `calculate-trust-score` Edge Function for recalculation.
+- [x] `v_evidence_timeline` view for sanitized event reconstruction.
 
-1. **Week 1: Foundations & Disputes** (Schema, RLS, Organization logic, Dispute API).
-2. **Week 2: Trust & Evidence** (Timeline view, Trust Scoring Engine, Abuse detection).
-3. **Week 3: Admin Console & UI** (Flutter PWA screens, final auditing).
+### 3. Verification Results Reported
 
-## Acceptance Gate (Sprint 3)
-- [ ] Disabled pilot user cannot perform any protected actions.
-- [ ] Dispute timeline verified clear of PII.
-- [ ] Trust score correctly reflects a rejected GPS attempt.
-- [ ] Evidence timeline accurately reconstructs a site visit from `audit_events`.
+- [x] GPS verification succeeded with 0m distance accuracy on live production project coordinates.
+- [x] Trust score baseline confirmed at `3.00`.
+- [x] Trust scoring aggregates only attributed events.
+- [x] Sanitized evidence timeline provides dispute context without phone/name exposure.
+- [x] PII compliance maintained across timelines, disputes, trust metrics, and storage references.
+
+## Security Invariants
+
+- Phone numbers remain encrypted sensitive data only.
+- No phone numbers, masked numbers, or names are allowed in UI, logs, network payloads, storage paths, disputes, timelines, or trust records.
+- Pilot actions fail closed when user/org status is inactive or unconfigured.
+- State transitions must remain backend-controlled.
+- Audit and evidence records must remain append-only or traceable through immutable state-change events.
+
+## Final Gate
+
+```text
+Sprint 3 v0.3.0-trust: PASSED
+Pilot Users: AUTHORIZED & ONBOARDING
+Sprint 4: READY FOR PLANNING
+```
+
+## Sprint 4 Boundary
+
+Sprint 4 should focus on operational visibility only:
+
+- Abuse Monitoring Dashboard
+- high-risk dispute notifications
+- trust score decay algorithms for inactive pilot users
+- operational analytics over sanitized events
+
+Do not weaken the Sprint 1 phone-security constitution, Sprint 2 verification engine, or Sprint 3 fail-closed pilot authorization to ship dashboards faster.

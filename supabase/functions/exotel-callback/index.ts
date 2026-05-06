@@ -1,25 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-function safeJson(body: Record<string, unknown>, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function env(name: string) {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error("server_error");
-  return value;
-}
-
-function safeText(value: FormDataEntryValue | null, max = 120) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.length > max) return null;
-  return trimmed;
-}
+import { adminClient, safeJson, recordAudit, cleanText } from "../_shared/sprint7.ts";
 
 function safeDuration(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || value.trim() === "") return null;
@@ -45,21 +24,21 @@ function mapStatus(value: string | null) {
   }
 }
 
-serve(async (req) => {
-  if (req.method !== "POST") return safeJson({ ok: false, reason: "invalid_input" }, 405);
+Deno.serve(async (req: Request): Promise<Response> => {
+  if (req.method !== "POST") return safeJson({ ok: false, reason: "invalid_method" }, 405);
 
   try {
     const attemptId = new URL(req.url).searchParams.get("attempt_id");
     const formData = await req.formData();
-    const providerCallId = safeText(formData.get("CallSid")) ?? safeText(formData.get("Sid"));
-    const providerStatus = mapStatus(safeText(formData.get("Status")) ?? safeText(formData.get("CallStatus")));
+    const providerCallId = cleanText(formData.get("CallSid") as string ?? formData.get("Sid") as string);
+    const providerStatus = mapStatus(cleanText(formData.get("Status") as string ?? formData.get("CallStatus") as string));
     const durationSeconds = safeDuration(formData.get("Duration")) ?? safeDuration(formData.get("CallDuration"));
 
     if (!attemptId && !providerCallId) {
       return safeJson({ ok: false, reason: "invalid_input" }, 400);
     }
 
-    const admin = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+    const admin = adminClient();
     const update = {
       provider_call_id: providerCallId,
       call_status: providerStatus,
@@ -69,25 +48,27 @@ serve(async (req) => {
 
     let query = admin.from("call_attempts").update(update);
     query = attemptId ? query.eq("id", attemptId) : query.eq("provider_call_id", providerCallId);
-    const { data, error } = await query.select("id, lead_id, caller_id").maybeSingle();
 
-    if (error) return safeJson({ ok: false, reason: "server_error" }, 500);
+    const { data: attempt, error: updateError } = await query.select("id, lead_id, caller_id").maybeSingle();
 
-    if (data) {
-      await admin.from("audit_events").insert({
-        actor_id: data.caller_id,
-        lead_id: data.lead_id,
-        event_type: "call_callback_received",
-        event_context: {
-          provider: "exotel",
-          call_status: providerStatus,
-          duration_recorded: durationSeconds !== null,
-        },
+    if (updateError) throw updateError;
+
+    if (attempt) {
+      const { data: lead } = await admin
+        .from("leads_public")
+        .select("organization_id")
+        .eq("id", attempt.lead_id)
+        .maybeSingle();
+
+      await recordAudit(admin, attempt.caller_id, lead?.organization_id ?? null, attempt.lead_id, "call_callback_received", {
+        provider: "exotel",
+        call_status: providerStatus,
+        duration_recorded: durationSeconds !== null,
       });
     }
 
     return safeJson({ ok: true }, 200);
-  } catch {
-    return safeJson({ ok: false, reason: "server_error" }, 500);
+  } catch (err) {
+    return safeJson({ ok: false, reason: "internal_server_error" }, 500);
   }
 });

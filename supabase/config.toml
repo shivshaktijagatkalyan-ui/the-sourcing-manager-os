@@ -1,33 +1,136 @@
 
-[functions.admin-pilot-action]
-enabled = true
+[functions.accept-invite]
 verify_jwt = true
-import_map = "./functions/admin-pilot-action/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/admin-pilot-action/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/admin-pilot-action/*.html" ]
+import_map = "functions/import_map.json"
+
+[functions.acknowledge-risk-notification]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.activate-user]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.admin-pilot-action]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.assign-role]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.broker-review-site-visit]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.broker-upload-lead]
+verify_jwt = true
+import_map = "functions/import_map.json"
 
 [functions.calculate-trust-score]
-enabled = true
 verify_jwt = true
-import_map = "./functions/calculate-trust-score/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/calculate-trust-score/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/calculate-trust-score/*.html" ]
+import_map = "functions/import_map.json"
+
+[functions.check-rate-limit]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.create-organization]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.create-risk-notification]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.create-site-visit]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.deactivate-user]
+verify_jwt = true
+import_map = "functions/import_map.json"
 
 [functions.dispute-engine]
-enabled = true
 verify_jwt = true
-import_map = "./functions/dispute-engine/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/dispute-engine/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/dispute-engine/*.html" ]
+import_map = "functions/import_map.json"
+
+[functions.exotel-callback]
+verify_jwt = false
+import_map = "functions/import_map.json"
+
+[functions.flag-abuse-event]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.generate-diagnostics]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.generate-payout-statement]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.generate-risk-summary]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.incident-response]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.initiate-call]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.invite-user]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.pause-organization]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.resolve-abuse-event]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.resume-organization]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.route-incoming-leads]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.run-payout-eligibility]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.run-trust-decay]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.start-site-visit]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.suspend-user]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.system-health-check]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.update-permission-template]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.upload-site-photo]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.verify-site-gps]
+verify_jwt = true
+import_map = "functions/import_map.json"
