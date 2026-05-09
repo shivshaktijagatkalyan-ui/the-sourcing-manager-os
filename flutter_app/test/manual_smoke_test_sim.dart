@@ -1,4 +1,6 @@
-import '../lib/utils/training_runtime.dart';
+// ignore_for_file: avoid_print
+
+import 'package:sourcing_manager_os/utils/training_runtime.dart';
 
 Future<void> main() async {
   final runtime = TrainingRuntime.instance;

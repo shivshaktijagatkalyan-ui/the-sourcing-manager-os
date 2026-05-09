@@ -1,5 +1,7 @@
+// ignore_for_file: avoid_print
+
 import 'dart:convert';
-import '../lib/utils/training_runtime.dart';
+import 'package:sourcing_manager_os/utils/training_runtime.dart';
 
 void main() async {
   final runtime = TrainingRuntime.instance;

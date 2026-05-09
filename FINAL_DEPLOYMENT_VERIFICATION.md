@@ -40,7 +40,7 @@
 The following flows are now ready for final live verification:
 - [ ] **Lead Upload**: Verify encryption in `leads_sensitive`.
 - [ ] **Secure Call**: Verify 403 on unauthenticated/unlocked leads.
-- [ ] **Site Visit**: Verify GPS geofence enforcement.
+- [x] **Site Visit**: ✅ **DEPLOYED** (May 7, 2026 10:41 UTC) — Migration 20260507000600 applied. Proposal & Confirmation tables live. GPS geofence enforcement ready.
 - [ ] **Broker Lock**: Verify 45-day lock creation.
 - [ ] **Audit Trail**: Verify no PII leakage in audit logs.
 

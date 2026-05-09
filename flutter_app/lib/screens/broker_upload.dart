@@ -19,6 +19,7 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
   final _budgetMinController = TextEditingController();
   final _budgetMaxController = TextEditingController();
   bool _isSubmitting = false;
+  bool _obscurePhone = true;
 
   @override
   void dispose() {
@@ -168,6 +169,11 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
                 icon: Icons.lock_outline,
                 keyboardType: TextInputType.phone,
                 validator: _validatePhone,
+                obscureText: _obscurePhone,
+                suffix: IconButton(
+                  icon: Icon(_obscurePhone ? Icons.visibility_off : Icons.visibility, size: 18),
+                  onPressed: () => setState(() => _obscurePhone = !_obscurePhone),
+                ),
               ),
               const SizedBox(height: 16),
               _textField(
@@ -237,15 +243,19 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
     String? helper,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
+    bool obscureText = false,
+    Widget? suffix,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
+      obscureText: obscureText,
       decoration: InputDecoration(
         labelText: label,
         helperText: helper,
         border: const OutlineInputBorder(),
         prefixIcon: Icon(icon),
+        suffixIcon: suffix,
       ),
       validator: validator,
     );

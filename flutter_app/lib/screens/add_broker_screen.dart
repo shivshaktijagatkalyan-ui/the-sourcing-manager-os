@@ -30,6 +30,7 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
   String _interestLevel = 'unknown';
   
   bool _isSubmitting = false;
+  bool _obscureSensitive = true;
 
   @override
   void dispose() {
@@ -178,9 +179,26 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
               _textField(_companyController, 'Company / Agency', Icons.business),
               const SizedBox(height: 24),
               _sectionHeader('Secure Contact'),
-              _textField(_phoneController, 'Phone Number (Protected)', Icons.lock_outline, helper: 'Will be encrypted immediately.', keyboardType: TextInputType.phone),
+              _textField(
+                _phoneController, 
+                'Phone Number (Protected)', 
+                Icons.lock_outline, 
+                helper: 'Will be encrypted immediately.', 
+                keyboardType: TextInputType.phone,
+                obscureText: _obscureSensitive,
+                suffix: IconButton(
+                  icon: Icon(_obscureSensitive ? Icons.visibility_off : Icons.visibility, size: 18),
+                  onPressed: () => setState(() => _obscureSensitive = !_obscureSensitive),
+                ),
+              ),
               const SizedBox(height: 12),
-              _textField(_emailController, 'Email Address (Protected)', Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+              _textField(
+                _emailController, 
+                'Email Address (Protected)', 
+                Icons.email_outlined, 
+                keyboardType: TextInputType.emailAddress,
+                obscureText: _obscureSensitive,
+              ),
               const SizedBox(height: 24),
               _sectionHeader('Location & Expertise'),
               _textField(_areaController, 'Primary Area (e.g. Panvel)', Icons.map_outlined),
@@ -246,16 +264,18 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
     );
   }
 
-  Widget _textField(TextEditingController controller, String label, IconData icon, {String? helper, TextInputType? keyboardType, String? Function(String?)? validator, int maxLines = 1}) {
+  Widget _textField(TextEditingController controller, String label, IconData icon, {String? helper, TextInputType? keyboardType, String? Function(String?)? validator, int maxLines = 1, bool obscureText = false, Widget? suffix}) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
       keyboardType: keyboardType,
       validator: validator,
+      obscureText: obscureText,
       decoration: InputDecoration(
         labelText: label,
         helperText: helper,
         prefixIcon: Icon(icon, size: 20),
+        suffixIcon: suffix,
         border: const OutlineInputBorder(),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),

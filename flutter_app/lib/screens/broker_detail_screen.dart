@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app_config.dart';
+import '../utils/premium_ui.dart';
 import '../utils/training_runtime.dart';
 import 'add_lead_from_broker.dart';
 
@@ -168,6 +169,13 @@ class _BrokerDetailScreenState extends State<BrokerDetailScreen> {
         });
         
         await _loadAllData();
+      } else {
+        final updated = _trainingRuntime.updateBrokerActivationStage(widget.brokerId, newStage);
+        if (!updated && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Update failed: request_failed')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -184,6 +192,13 @@ class _BrokerDetailScreenState extends State<BrokerDetailScreen> {
         final client = Supabase.instance.client;
         await client.functions.invoke('initiate-broker-call', body: {'broker_id': widget.brokerId});
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Secure call bridge initiated...')));
+      } else {
+        final result = await _trainingRuntime.initiateCall(widget.brokerId, type: 'broker');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result['ok'] == true ? 'Secure call bridge initiated...' : 'Call failed.')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Call failed.')));
@@ -199,6 +214,7 @@ class _BrokerDetailScreenState extends State<BrokerDetailScreen> {
     final currentStage = _activationData?['activation_stage'] ?? 'not_contacted';
 
     return Scaffold(
+      backgroundColor: PremiumUI.background,
       appBar: AppBar(title: Text(broker['broker_alias'])),
       body: SingleChildScrollView(
         child: Column(
@@ -505,6 +521,13 @@ class _BrokerDetailScreenState extends State<BrokerDetailScreen> {
           'notes': notes,
         });
         await _loadAllData();
+      } else {
+        final logged = _trainingRuntime.logBrokerActivity(widget.brokerId, type, notes);
+        if (!logged && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to log: request_failed')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -585,6 +608,18 @@ class _BrokerDetailScreenState extends State<BrokerDetailScreen> {
           'priority': priority,
         });
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Follow-up scheduled.')));
+      } else {
+        final created = _trainingRuntime.createBrokerFollowup(
+          brokerId: widget.brokerId,
+          dueAt: due,
+          reason: reason,
+          priority: priority,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(created ? 'Follow-up scheduled.' : 'Failed to schedule: request_failed')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -689,29 +724,41 @@ class _BrokerDetailScreenState extends State<BrokerDetailScreen> {
   Widget _actionsSection() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: _initiateCall,
-              icon: const Icon(Icons.call),
-              label: const Text('SECURE CALL'),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
-            ),
+          Text('NEXT ACTIONS', style: PremiumUI.subtitle.copyWith(color: Colors.white, letterSpacing: 1.2)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _initiateCall,
+                  icon: const Icon(Icons.call),
+                  label: const Text('SECURE CALL'),
+                  style: ElevatedButton.styleFrom(backgroundColor: PremiumUI.secondary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              IconButton.filledTonal(
+                onPressed: _showLogActivityDialog,
+                icon: const Icon(Icons.note_add_outlined),
+                tooltip: 'Log Activity',
+                padding: const EdgeInsets.all(16),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: _showFollowupDialog,
+                icon: const Icon(Icons.calendar_month_outlined),
+                tooltip: 'Set Follow-up',
+                padding: const EdgeInsets.all(16),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          IconButton.filledTonal(
-            onPressed: _showLogActivityDialog,
-            icon: const Icon(Icons.note_add_outlined),
-            tooltip: 'Log Activity',
-            padding: const EdgeInsets.all(16),
-          ),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-            onPressed: _showFollowupDialog,
-            icon: const Icon(Icons.calendar_month_outlined),
-            tooltip: 'Set Follow-up',
-            padding: const EdgeInsets.all(16),
+          const SizedBox(height: 12),
+          Text(
+            'Secure Call, activity logging, aur follow-up automation se broker pipeline deterministic rahegi.',
+            style: PremiumUI.subtitle.copyWith(color: Colors.white70, fontSize: 11),
           ),
         ],
       ),

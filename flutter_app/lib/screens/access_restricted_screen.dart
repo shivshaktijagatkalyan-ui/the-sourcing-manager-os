@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AccessRestrictedScreen extends StatelessWidget {
   final String role;
@@ -44,7 +45,9 @@ class AccessRestrictedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 48),
               OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () async {
+                  await Supabase.instance.client.auth.signOut();
+                },
                 icon: const Icon(Icons.logout),
                 label: const Text('LOGOUT & RETRY'),
                 style: OutlinedButton.styleFrom(

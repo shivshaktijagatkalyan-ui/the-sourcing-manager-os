@@ -41,20 +41,31 @@ class RoleResolver {
     if (override != null && _localTestRoles.contains(override)) {
       return override;
     }
-    return AppConfig.isTrainingMode ? AppConfig.mockRole : 'anonymous';
+    if (AppConfig.isTrainingMode) {
+      return AppConfig.mockRole.isNotEmpty
+          ? AppConfig.mockRole
+          : 'sourcing_manager';
+    }
+    return 'anonymous';
   }
 
-  static Future<String> currentRole() async {
-    if (!AppConfig.isSupabaseConfigured) {
+  static Future<String> currentRole({
+    SupabaseClient? client,
+    bool? isSupabaseConfigured,
+  }) async {
+    final supabaseConfigured =
+        isSupabaseConfigured ?? AppConfig.isSupabaseConfigured;
+
+    if (AppConfig.isTrainingMode || !supabaseConfigured) {
       return _localRole();
     }
 
-    final client = Supabase.instance.client;
-    final user = client.auth.currentUser;
+    final supabase = client ?? Supabase.instance.client;
+    final user = supabase.auth.currentUser;
     if (user == null) return 'anonymous';
 
     try {
-      final assignment = await client
+      final assignment = await supabase
           .from('role_assignments')
           .select('role_id')
           .eq('user_id', user.id)
@@ -68,7 +79,7 @@ class RoleResolver {
     }
 
     try {
-      final pilot = await client
+      final pilot = await supabase
           .from('pilot_users')
           .select('role, status')
           .eq('user_id', user.id)

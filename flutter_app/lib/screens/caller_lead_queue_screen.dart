@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app_config.dart';
+import '../utils/premium_ui.dart';
 import '../utils/training_runtime.dart';
 import 'call_status.dart';
 
@@ -50,11 +51,36 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
             .from('leads_public')
             .select('*, brokers_public(broker_alias, company_name)')
             .eq('assigned_caller_id', userId)
-            .order('call_priority', ascending: false)
-            .order('created_at', ascending: true);
+            .order('call_priority', ascending: false); // Basic fetch, we will smart-sort in memory
+
+        final now = DateTime.now();
+        final sortedLeads = List<Map<String, dynamic>>.from(data);
+        
+        // Smart Sort: 
+        // 1. Callbacks Due (callback_at <= now)
+        // 2. High Priority New Leads
+        // 3. Normal Priority New Leads
+        // 4. Everything else
+        sortedLeads.sort((a, b) {
+          final aCallback = DateTime.tryParse(a['callback_at'] ?? '')?.toLocal();
+          final bCallback = DateTime.tryParse(b['callback_at'] ?? '')?.toLocal();
+          final aIsDue = aCallback != null && aCallback.isBefore(now);
+          final bIsDue = bCallback != null && bCallback.isBefore(now);
+
+          if (aIsDue && !bIsDue) return -1;
+          if (!aIsDue && bIsDue) return 1;
+          
+          if (a['call_priority'] == 'high' && b['call_priority'] != 'high') return -1;
+          if (a['call_priority'] != 'high' && b['call_priority'] == 'high') return 1;
+
+          if (a['lead_status'] == 'new' && b['lead_status'] != 'new') return -1;
+          if (a['lead_status'] != 'new' && b['lead_status'] == 'new') return 1;
+
+          return 0;
+        });
 
         setState(() {
-          _leads = List<Map<String, dynamic>>.from(data);
+          _leads = sortedLeads;
           _isLoading = false;
         });
       } else {
@@ -77,16 +103,42 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Assigned Leads')),
+      backgroundColor: PremiumUI.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text('Assigned Leads', style: PremiumUI.h1.copyWith(fontSize: 20)),
+      ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
             onRefresh: _fetchLeads,
-            child: ListView.separated(
+            child: ListView(
               padding: const EdgeInsets.all(16),
-              itemCount: _leads.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) => _leadCard(_leads[index]),
+              children: [
+                PremiumUI.sectionShell(
+                  title: 'Caller Queue',
+                  subtitle: 'Assigned leads only. Number screen par kabhi nahi dikhega.',
+                  accentColor: PremiumUI.secondary,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Secure Call ke baad outcome update karo. Interested lead turant sourcing manager ke action bucket mein jayega.',
+                          style: PremiumUI.subtitle.copyWith(color: Colors.white70, fontSize: 11),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      PremiumUI.statusBadge('${_leads.length} assigned', PremiumUI.accent),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ..._leads.map((lead) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _leadCard(lead),
+                    )),
+              ],
             ),
           ),
     );
@@ -96,7 +148,10 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
     final broker = lead['brokers_public']?['broker_alias'] ?? 'Direct';
     final company = lead['brokers_public']?['company_name'] ?? '';
     
-    return Card(
+    final outcome = (lead['last_call_outcome'] ?? lead['lead_status'] ?? 'pending').toString();
+
+    return Container(
+      decoration: PremiumUI.glassBox(color: PremiumUI.accent, opacity: 0.05),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -109,7 +164,7 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(lead['alias'] ?? 'Unknown', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Text('Source: $broker ($company)', style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                    Text('Source Broker: $broker${company.isEmpty ? '' : ' • $company'}', style: const TextStyle(fontSize: 11, color: Colors.white54)),
                   ],
                 ),
                 _priorityBadge(lead['call_priority'] ?? 'normal'),
@@ -127,6 +182,15 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
                 Text('${(lead['budget_min'] ?? 0) ~/ 100000}L - ${(lead['budget_max'] ?? 0) ~/ 100000}L', style: const TextStyle(fontSize: 13)),
               ],
             ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                PremiumUI.statusBadge((lead['lead_status'] ?? 'new').toString(), PremiumUI.statusColor((lead['lead_status'] ?? 'new').toString())),
+                PremiumUI.statusBadge(outcome.replaceAll('_', ' '), PremiumUI.statusColor(outcome)),
+              ],
+            ),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -136,7 +200,7 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
                     icon: const Icon(Icons.phone),
                     label: const Text('SECURE CALL'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
+                      backgroundColor: PremiumUI.secondary,
                       foregroundColor: Colors.white,
                     ),
                   ),
@@ -145,6 +209,7 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
                 IconButton.filledTonal(
                   onPressed: () => _showOutcomeDialog(lead),
                   icon: const Icon(Icons.edit_note),
+                  tooltip: 'Update outcome',
                 ),
               ],
             ),
@@ -155,15 +220,7 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
   }
 
   Widget _priorityBadge(String priority) {
-    Color color = Colors.grey;
-    if (priority == 'high' || priority == 'urgent') color = Colors.red;
-    if (priority == 'normal') color = Colors.blue;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: color.withValues(alpha: 0.3))),
-      child: Text(priority.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
-    );
+    return PremiumUI.statusBadge(priority, PremiumUI.statusColor(priority));
   }
 
   Future<void> _initiateCall(String leadId) async {
@@ -202,6 +259,19 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
                 onChanged: (val) => setDialogState(() => outcome = val!),
                 decoration: const InputDecoration(labelText: 'Outcome'),
               ),
+              if (outcome == 'call_later')
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: ListTile(
+                    title: const Text('Callback Time', style: TextStyle(fontSize: 12)),
+                    subtitle: const Text('Default: 2 hours later', style: TextStyle(fontSize: 10)),
+                    trailing: const Icon(Icons.calendar_today, size: 16),
+                    onTap: () {
+                      // In a real app, show a time picker. For pilot, we default to +2 hours.
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Callback set for 2 hours from now.')));
+                    },
+                  ),
+                ),
               const SizedBox(height: 12),
               TextField(
                 controller: notesController,
@@ -233,6 +303,7 @@ class _CallerLeadQueueScreenState extends State<CallerLeadQueueScreen> {
           'lead_id': leadId,
           'outcome': outcome,
           'notes': notes,
+          if (outcome == 'call_later') 'next_followup_at': DateTime.now().add(const Duration(hours: 2)).toIso8601String(),
         });
         await _fetchLeads();
       } else {

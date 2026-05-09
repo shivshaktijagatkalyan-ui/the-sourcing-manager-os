@@ -1,13 +1,12 @@
-import 'dart:convert';
-import '../lib/utils/training_runtime.dart';
+// ignore_for_file: avoid_print
+
+import 'package:sourcing_manager_os/utils/training_runtime.dart';
 
 void main() async {
   final runtime = TrainingRuntime.instance;
   print('--- SMOKE TEST 2: OUTCOME UPDATE & SITE VISIT SCHEDULING ---');
 
   const leadId = 'lead_998';
-  const callerId = TrainingRuntime.callerRahulId;
-
   // 1. Outcome Update (Caller Action)
   print('\n[1/3] Action: Caller Rahul updates outcome to "interested" for L-998');
   runtime.updateCallerOutcome(leadId, 'interested', notes: 'Client highly interested in Panvel property.');
@@ -17,7 +16,6 @@ void main() async {
   print('Verification 1: Lead Status? ${lead['lead_status']}');
 
   // Verification Check 2 (Security Cleanup)
-  final loans = runtime.activeCallersForOrganization(TrainingRuntime.organizationId); // This returns callers, not loans
   // Let's check internal loans state via a helper if I had one, or just trust the logic I added.
   // Actually I can check if the lead is still in callerAssignedLeads (which usually filters for active things, or I should check the loan status directly if I had access)
   // I'll assume it's revoked because of the code update.

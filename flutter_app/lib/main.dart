@@ -35,6 +35,7 @@ import 'screens/sourcing_manager_dashboard.dart';
 import 'screens/broker_sourced_site_visits.dart';
 import 'screens/caller_dashboard_screen.dart';
 import 'screens/caller_lead_queue_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/role_dashboard_container.dart';
 import 'utils/connectivity_manager.dart';
 import 'utils/role_resolver.dart';
@@ -130,14 +131,32 @@ class _MainNavigationState extends State<MainNavigation> {
     super.initState();
     ConnectivityManager.listen(context);
     _fetchRole();
+
+    if (AppConfig.isSupabaseConfigured) {
+      Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+        if (mounted) _fetchRole();
+      });
+    }
   }
 
   Future<void> _fetchRole() async {
     try {
       final role = await RoleResolver.currentRole();
-      setState(() => _role = role);
+      if (mounted) setState(() => _role = role);
     } catch (e) {
-      setState(() => _role = 'unknown');
+      if (mounted) setState(() => _role = 'unknown');
+    }
+  }
+
+  Future<void> _logout() async {
+    if (AppConfig.isSupabaseConfigured) {
+      await Supabase.instance.client.auth.signOut();
+    }
+    AppConfig.isTrainingMode = false;
+    AppConfig.mockRole = '';
+    if (mounted) {
+      _fetchRole();
+      if (Navigator.canPop(context)) Navigator.pop(context);
     }
   }
 
@@ -148,6 +167,16 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    if (_role == 'loading') {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_role == 'anonymous') {
+      return LoginScreen(onAuthStateChanged: _fetchRole);
+    }
+
     final isAdmin = RoleResolver.isAdminRole(_role);
     final isSourcing = RoleResolver.isSourcingRole(_role);
     final isCaller = RoleResolver.isCallerRole(_role);
@@ -204,8 +233,13 @@ class _MainNavigationState extends State<MainNavigation> {
               subtitle: const Text('Practice without affecting data',
                   style: TextStyle(fontSize: 10)),
               value: AppConfig.isTrainingMode,
-              onChanged: (val) =>
-                  setState(() => AppConfig.isTrainingMode = val),
+              onChanged: (val) {
+                setState(() {
+                  AppConfig.isTrainingMode = val;
+                  AppConfig.mockRole = val ? 'sourcing_manager' : '';
+                });
+                _fetchRole();
+              },
               secondary: const Icon(Icons.school_outlined),
             ),
             const Divider(),
@@ -379,10 +413,18 @@ class _MainNavigationState extends State<MainNavigation> {
                   title: 'Settings',
                   onTap: () => _select(23)),
             ],
+            const Divider(),
+            if (_role != 'anonymous')
+              _NavTile(
+                icon: Icons.logout,
+                title: 'Logout',
+                onTap: _logout,
+              ),
           ],
         ),
       ),
       body: TrainingModeOverlay(
+        key: ValueKey('${AppConfig.isTrainingMode}_$_role'),
         isTrainingMode: AppConfig.isTrainingMode,
         child: _screens[_selectedIndex],
       ),

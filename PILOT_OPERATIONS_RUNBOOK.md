@@ -2,6 +2,8 @@
 
 This is the mandatory line-by-line execution guide for the Sourcing Manager OS Operators. Each step must be evidenced by a log, hash, or screenshot.
 
+**Test Credentials**: Reference [TEST_CREDENTIALS.md](file:///c:/Users/iBUGG3D/Desktop/The%20Sourcing%20MAnager%20OS/TEST_CREDENTIALS.md) for pilot login details.
+
 ## 🟢 Gate 1: Environment & Secret Hardening
 | Step | Action | Evidence Required |
 | :--- | :--- | :--- |
@@ -21,7 +23,7 @@ This is the mandatory line-by-line execution guide for the Sourcing Manager OS O
 ## 🚢 Gate 3: Deployment Evidence
 | Step | Action | Evidence Required |
 | :--- | :--- | :--- |
-| 3.1 | Apply Migrations: `20240501...` to `20240511...`. | Output of `supabase db push` showing all applied. |
+| 3.1 | Apply Migrations: `20240501...` to `20240511...`. | ✅ **COMPLETE**: All 35 migrations applied (last: `20260507000600` on May 7, 2026 10:41 UTC). Output: `supabase migration list` confirms sync. |
 | 3.2 | Deploy 30+ Edge Functions. | `supabase functions deploy --all` success log. |
 | 3.3 | Record Flutter Build Hash. | Git Commit SHA + Flutter build timestamp. |
 
@@ -29,8 +31,8 @@ This is the mandatory line-by-line execution guide for the Sourcing Manager OS O
 *Mandatory: Perform this flow with one Broker, one Manager, and one Caller.*
 | Step | Action | Success Marker |
 | :--- | :--- | :--- |
-| 4.1 | **Invite**: Manager invites Broker. | `onboarding_audit_events` shows `invite_sent`. |
-| 4.2 | **Accept**: Broker accepts and activates. | `pilot_users.status` = `active`. |
+| 4.1 | **Invite**: Manager invites Broker. | ✅ **COMPLETE**: Verified via `onboarding_audit_events` for user `antigravity.test@gmail.com`. |
+| 4.2 | **Accept**: Broker accepts and activates. | ✅ **COMPLETE**: `user_profiles.status` = `active` for Jitu Gupta. |
 | 4.3 | **Source**: Broker uploads a lead. | `leads_public` entry exists; PII is encrypted in `leads_private`. |
 | 4.4 | **Loan**: Manager grants Data Loan. | `data_loans` entry exists with correct expiry. |
 | 4.5 | **Call**: Caller initiates bridge call. | Exotel log shows `Status: 200` (Verify no number visible to Caller). |

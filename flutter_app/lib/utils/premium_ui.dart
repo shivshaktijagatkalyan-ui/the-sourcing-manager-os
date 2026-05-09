@@ -21,13 +21,13 @@ class PremiumUI {
     );
   }
 
-  static Widget glassCard({required Widget child, Color? color, double opacity = 0.05}) {
+  static Widget glassCard({required Widget child, Color? color, double opacity = 0.05, EdgeInsetsGeometry? padding}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: padding ?? const EdgeInsets.all(16),
           decoration: glassBox(color: color, opacity: opacity),
           child: child,
         ),

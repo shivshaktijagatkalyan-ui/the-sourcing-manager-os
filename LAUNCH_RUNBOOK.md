@@ -9,6 +9,11 @@
 ## 2. Deployment Sequence
 
 1. **Migrations**: Apply all migrations from `20240501...` to `20240511...`.
+   - ✅ **DEPLOYED (May 7, 2026 10:41 UTC)**: Migration `20260507000600_site_visit_proposal_confirmation.sql` applied to production.
+     - Site Visit Proposals table: ✅ Created
+     - Site Visit Confirmations table: ✅ Created
+     - RLS Policies: ✅ Applied
+     - Database Indexes: ✅ Created
 2. **Edge Functions**: Deploy the full list of 30+ functions.
 3. **Flutter**: Build and deploy Flutter Web/PWA to production hosting.
 4. **Secrets**: Initialize all env secrets (Exotel, JWT, etc.).

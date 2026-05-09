@@ -27,6 +27,14 @@ import_map = "functions/import_map.json"
 verify_jwt = true
 import_map = "functions/import_map.json"
 
+[functions.broker-vault-workflow]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.broker-self-secure-call]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
 [functions.calculate-trust-score]
 verify_jwt = true
 import_map = "functions/import_map.json"
@@ -48,6 +56,10 @@ verify_jwt = true
 import_map = "functions/import_map.json"
 
 [functions.deactivate-user]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.data-loan-workflow]
 verify_jwt = true
 import_map = "functions/import_map.json"
 
@@ -132,5 +144,9 @@ verify_jwt = true
 import_map = "functions/import_map.json"
 
 [functions.verify-site-gps]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.complete-onboarding]
 verify_jwt = true
 import_map = "functions/import_map.json"

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app_config.dart';
+import '../utils/premium_ui.dart';
+import '../utils/training_runtime.dart';
 import 'broker_detail_screen.dart';
 import 'call_status.dart';
 
@@ -13,6 +15,7 @@ class BrokerFollowupQueueScreen extends StatefulWidget {
 }
 
 class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
+  final TrainingRuntime _trainingRuntime = TrainingRuntime.instance;
   bool _isLoading = true;
   List<Map<String, dynamic>> _followups = [];
   String _filterStatus = 'pending';
@@ -20,7 +23,24 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
   @override
   void initState() {
     super.initState();
+    if (!AppConfig.isSupabaseConfigured) {
+      _trainingRuntime.addListener(_handleTrainingUpdate);
+    }
     _fetchQueue();
+  }
+
+  @override
+  void dispose() {
+    if (!AppConfig.isSupabaseConfigured) {
+      _trainingRuntime.removeListener(_handleTrainingUpdate);
+    }
+    super.dispose();
+  }
+
+  void _handleTrainingUpdate() {
+    if (mounted) {
+      _fetchQueue();
+    }
   }
 
   Future<void> _fetchQueue() async {
@@ -43,19 +63,12 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
           _isLoading = false;
         });
       } else {
-        await Future.delayed(const Duration(seconds: 1));
+        await Future.delayed(const Duration(milliseconds: 250));
         setState(() {
-          _followups = [
-            {
-              'id': 'f1',
-              'broker_id': 'b1',
-              'due_at': DateTime.now().toIso8601String(),
-              'reason': 'Follow up on pitch',
-              'priority': 'high',
-              'status': 'pending',
-              'brokers_public': {'broker_alias': 'Panvel King', 'company_name': 'Panvel Realty', 'area': 'Panvel', 'category': 'hot'}
-            }
-          ];
+          _followups = _trainingRuntime
+              .followupsForManager(TrainingRuntime.sourcingManagerId)
+              .where((row) => row['status'] == _filterStatus)
+              .toList();
           _isLoading = false;
         });
       }
@@ -79,6 +92,8 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
           'followup_id': id,
         });
         _fetchQueue();
+      } else {
+        _trainingRuntime.completeBrokerFollowup(id);
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -97,15 +112,40 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Today\'s Follow-ups')),
+      backgroundColor: PremiumUI.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: Text('Today\'s Follow-ups', style: PremiumUI.h1.copyWith(fontSize: 20)),
+      ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: PremiumUI.sectionShell(
+              title: 'Follow-up Automation',
+              subtitle: 'Pending broker callbacks, stage nudges, and safe next actions',
+              accentColor: PremiumUI.warning,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Aaj follow-up due hai. Secure Call se broker ko connect karo, ya complete mark karke pipeline clean rakho.',
+                      style: PremiumUI.subtitle.copyWith(color: Colors.white70, fontSize: 11),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  PremiumUI.statusBadge('${_followups.length} open', PremiumUI.warning),
+                ],
+              ),
+            ),
+          ),
           _statusTabs(),
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
               : _followups.isEmpty 
-                ? const Center(child: Text('No follow-ups due.'))
+                ? const Center(child: Text('No follow-ups due.', style: TextStyle(color: PremiumUI.muted)))
                 : ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: _followups.length,
@@ -120,7 +160,7 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
 
   Widget _statusTabs() {
     return Container(
-      color: const Color(0xFF1E293B),
+      color: PremiumUI.panelColor,
       child: Row(
         children: [
           _tab('pending', 'Pending'),
@@ -138,12 +178,12 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
           setState(() => _filterStatus = status);
           _fetchQueue();
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: isSelected ? const Color(0xFF6366F1) : Colors.transparent, width: 2)),
-          ),
-          child: Text(label.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? const Color(0xFF6366F1) : Colors.white24)),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: isSelected ? PremiumUI.primary : Colors.transparent, width: 2)),
+            ),
+          child: Text(label.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? PremiumUI.primary : Colors.white24)),
         ),
       ),
     );
@@ -154,7 +194,8 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
     final due = DateTime.parse(followup['due_at']);
     final isOverdue = due.isBefore(DateTime.now()) && followup['status'] == 'pending';
 
-    return Card(
+    return Container(
+      decoration: PremiumUI.glassBox(color: PremiumUI.warning, opacity: 0.05),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -171,7 +212,7 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
                     ],
                   ),
                 ),
-                if (isOverdue) _badge('OVERDUE', Colors.red) else _badge('DUE', Colors.blue),
+                if (isOverdue) _badge('OVERDUE', PremiumUI.danger) else _badge('DUE', PremiumUI.accent),
               ],
             ),
             const Divider(height: 24),
@@ -179,7 +220,18 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
               children: [
                 const Icon(Icons.info_outline, size: 14, color: Colors.white38),
                 const SizedBox(width: 8),
-                Expanded(child: Text(followup['reason'] ?? 'Routine follow-up', style: const TextStyle(fontSize: 13, color: Colors.white70))),
+                Expanded(child: Text(followup['reason'] ?? followup['title'] ?? 'Routine follow-up', style: const TextStyle(fontSize: 13, color: Colors.white70))),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _badge((followup['priority'] ?? 'normal').toString(), PremiumUI.statusColor((followup['priority'] ?? 'normal').toString())),
+                const SizedBox(width: 8),
+                Text(
+                  'Due ${due.day}/${due.month} ${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 11, color: PremiumUI.muted),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -190,8 +242,8 @@ class _BrokerFollowupQueueScreenState extends State<BrokerFollowupQueueScreen> {
                     child: ElevatedButton.icon(
                       onPressed: () => _initiateCall(followup['broker_id']),
                       icon: const Icon(Icons.call, size: 18),
-                      label: const Text('CALL'),
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), foregroundColor: Colors.white),
+                      label: const Text('SECURE CALL'),
+                      style: ElevatedButton.styleFrom(backgroundColor: PremiumUI.secondary, foregroundColor: Colors.white),
                     ),
                   ),
                 const SizedBox(width: 8),
