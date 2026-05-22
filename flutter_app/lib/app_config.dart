@@ -55,11 +55,13 @@ class AppConfig {
 
   static void initialize() {
     try {
+      // Force training mode to false on launch unless query parameters explicitly override it
+      _isTrainingMode = false;
+      _mockRole = '';
+      writeTrainingStorage('sm_os_training_mode', 'false');
+      writeTrainingStorage('sm_os_mock_role', '');
+
       if (!allowsTrainingMode) {
-        _isTrainingMode = false;
-        _mockRole = '';
-        writeTrainingStorage('sm_os_training_mode', 'false');
-        writeTrainingStorage('sm_os_mock_role', '');
         return;
       }
 
@@ -71,19 +73,6 @@ class AppConfig {
         mockRole = queryRole ?? 'sourcing_manager';
         debugPrint(
             'AppConfig: training mode enabled from URL query, role: $_mockRole');
-      }
-
-      final stored = readTrainingStorage('sm_os_training_mode');
-      if (stored == 'true') {
-        _isTrainingMode = true;
-        final storedRole = readTrainingStorage('sm_os_mock_role');
-        if (storedRole != null && storedRole.isNotEmpty) {
-          _mockRole = storedRole;
-        } else if (_mockRole.isEmpty) {
-          _mockRole = 'sourcing_manager';
-        }
-        debugPrint(
-            'AppConfig: training mode restored from storage with role $_mockRole');
       }
     } catch (_) {}
   }
