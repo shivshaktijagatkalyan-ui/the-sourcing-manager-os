@@ -1,6 +1,5 @@
-import React from 'react';
-import SourcingManagerDashboard from '../../components/SourcingManagerDashboard';
+import { redirect } from 'next/navigation';
 
 export default function DashboardPage() {
-  return <SourcingManagerDashboard />;
+  redirect('/broker');
 }

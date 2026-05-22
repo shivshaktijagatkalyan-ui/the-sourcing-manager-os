@@ -46,11 +46,13 @@ void main() {
     expect(find.text('SOURCING MANAGER HUB'), findsOneWidget);
   });
 
-  testWidgets('broker roles route to broker dashboard', (tester) async {
-    await _pumpRoleDashboard(tester, 'broker_agent');
+  for (final role in ['broker', 'broker_owner', 'broker_agent']) {
+    testWidgets('$role routes to broker dashboard', (tester) async {
+      await _pumpRoleDashboard(tester, role);
 
-    expect(find.text('BROKER BUSINESS VAULT'), findsWidgets);
-  });
+      expect(find.text('BROKER BUSINESS VAULT'), findsWidgets);
+    });
+  }
 
   testWidgets('caller role routes to caller dashboard', (tester) async {
     await _pumpRoleDashboard(tester, 'caller');
@@ -61,7 +63,7 @@ void main() {
   testWidgets('admin role routes to super admin dashboard', (tester) async {
     await _pumpRoleDashboard(tester, 'admin');
 
-    expect(find.text('Super Admin Panel'), findsOneWidget);
+    expect(find.text('Real Estate Operations Control Room'), findsOneWidget);
   });
 
   testWidgets('unknown role remains fail closed', (tester) async {

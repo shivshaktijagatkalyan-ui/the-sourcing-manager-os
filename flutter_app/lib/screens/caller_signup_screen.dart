@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+import '../app_config.dart';
+import '../utils/premium_ui.dart';
 
 class CallerSignupScreen extends StatefulWidget {
   final VoidCallback? onAuthStateChanged;
@@ -19,66 +22,193 @@ class _CallerSignupScreenState extends State<CallerSignupScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  Future<void> _signUp() async {
-    if (!_formKey.currentState!.validate()) return;
+  void _autoFillTest() {
+    final id = const Uuid().v4();
+    setState(() {
+      _fullNameController.text = "Test Agent ${id.substring(0, 4)}";
+      _inviteCodeController.text = "PRO-2026-TEST";
+      _emailController.text = "testuser+$id@example.com";
+      _passwordController.text = "Test@1234";
+    });
+  }
+
+  void _showSupabaseConfigError() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Supabase is not configured. Run the app with SUPABASE_URL and SUPABASE_ANON_KEY or enable training mode.',
+        ),
+        backgroundColor: PremiumUI.danger,
+      ),
+    );
+  }
+
+  Future<void> _signUpWithGoogle() async {
+    if (_inviteCodeController.text.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invite code is required before Google caller signup.'),
+          backgroundColor: PremiumUI.danger,
+        ),
+      );
+      return;
+    }
+
+    if (!AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
+      _showSupabaseConfigError();
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
-      final response = await Supabase.instance.client.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
-      if (response.user != null) {
-        if (response.session == null &&
-            Supabase.instance.client.auth.currentSession == null) {
-          try {
-            await Supabase.instance.client.auth.signInWithPassword(
-              email: _emailController.text.trim(),
-              password: _passwordController.text.trim(),
-            );
-          } catch (_) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text(
-                        'Account created! Please confirm your email to activate.')),
-              );
-              Navigator.popUntil(context, (route) => route.isFirst);
-              return;
-            }
-          }
-        }
-
-        await Supabase.instance.client.functions
-            .invoke('complete-onboarding', body: {
-          'role': 'caller',
-          'full_name': _fullNameController.text.trim(),
-          'invite_code': _inviteCodeController.text.trim(),
-        });
-
+      if (AppConfig.isTrainingMode) {
+        await Future.delayed(const Duration(milliseconds: 800));
+        AppConfig.mockRole = 'caller';
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    'Account created successfully! Please check your email for verification.')),
+            const SnackBar(content: Text('Caller account created with Google (TRAINING MODE)')),
           );
           widget.onAuthStateChanged?.call();
           Navigator.popUntil(context, (route) => route.isFirst);
         }
+        return;
+      }
+
+      final launched = await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: Uri.base.toString(),
+      );
+
+      if (!launched) {
+        throw const AuthException('Unable to launch Google login');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        throw const AuthException('Google login did not complete.');
+      }
+
+      final client = Supabase.instance.client;
+      final onboarding = await client.functions.invoke('complete-onboarding', body: {
+        'role': 'caller',
+        'full_name': user.userMetadata?['full_name'] ?? user.email ?? 'Caller',
+        'invite_code': _inviteCodeController.text.trim(),
+      });
+
+      if (onboarding.data is Map && onboarding.data['ok'] != true) {
+        final reason = onboarding.data['reason'] ?? 'Onboarding failed';
+        throw AuthException(reason.toString());
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Caller account created with Google! ID: ${user.id.substring(0, 8)}...'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        widget.onAuthStateChanged?.call();
+        Navigator.popUntil(context, (route) => route.isFirst);
       }
     } on AuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text(e.message), backgroundColor: PremiumUI.danger),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Google signup failed: ${e.toString()}'),
+            backgroundColor: PremiumUI.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _signUp() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
+      _showSupabaseConfigError();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      if (AppConfig.isTrainingMode) {
+        // In Training Mode, we simulate success
+        await Future.delayed(const Duration(milliseconds: 800));
+        AppConfig.mockRole = 'caller';
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Caller account provisioned successfully! (TRAINING MODE)')),
+          );
+          widget.onAuthStateChanged?.call();
+          Navigator.popUntil(context, (route) => route.isFirst);
+        }
+        return;
+      }
+
+      final response = await Supabase.instance.client.auth.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (response.user == null) {
+        throw const AuthException('Unable to provision caller account. Please try again.');
+      }
+
+      if (response.session == null &&
+          Supabase.instance.client.auth.currentSession == null) {
+        await Supabase.instance.client.auth.signInWithPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      }
+
+      final onboarding =
+          await Supabase.instance.client.functions.invoke('complete-onboarding', body: {
+        'role': 'caller',
+        'full_name': _fullNameController.text.trim(),
+        'invite_code': _inviteCodeController.text.trim(),
+      });
+
+      if (onboarding.data is Map && onboarding.data['ok'] != true) {
+        final reason = onboarding.data['reason'] ?? 'Onboarding failed';
+        throw AuthException(reason.toString());
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('An unexpected error occurred'),
-              backgroundColor: Colors.redAccent),
+              content: Text(
+                  'Caller account provisioned successfully!')),
+        );
+        widget.onAuthStateChanged?.call();
+        Navigator.popUntil(context, (route) => route.isFirst);
+      }
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: PremiumUI.danger),
+        );
+      }
+    } catch (e, stack) {
+      debugPrint('CallerSignup: unexpected error: $e');
+      debugPrintStack(stackTrace: stack);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Unexpected error: ${e.toString()}'),
+              backgroundColor: PremiumUI.danger),
         );
       }
     } finally {
@@ -89,136 +219,179 @@ class _CallerSignupScreenState extends State<CallerSignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: PremiumUI.background,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Caller Signup'),
-        backgroundColor: const Color(0xFF0F172A),
+        title: Text('AGENT ONBOARDING', style: PremiumUI.h1.copyWith(fontSize: 14, letterSpacing: 2)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.phone_outlined,
-                  size: 80, color: Color(0xFFF5B545)),
-              const SizedBox(height: 32),
-              const Text(
-                'Caller Registration',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Join to make secure calls to assigned leads',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white54),
-              ),
-              const SizedBox(height: 48),
-              TextFormField(
-                controller: _fullNameController,
-                decoration: InputDecoration(
-                  labelText: 'Full Name',
-                  prefixIcon: const Icon(Icons.person_outline),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.05),
-                ),
-                validator: (value) =>
-                    value?.isEmpty ?? true ? 'Full name is required' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _inviteCodeController,
-                decoration: InputDecoration(
-                  labelText: 'Invite Code / Organization Code',
-                  prefixIcon: const Icon(Icons.vpn_key_outlined),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.05),
-                ),
-                validator: (value) =>
-                    value?.isEmpty ?? true ? 'Invite code is required' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _emailController,
-                decoration: InputDecoration(
-                  labelText: 'Email Address',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.05),
-                ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value?.isEmpty ?? true) return 'Email is required';
-                  if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value!)) {
-                    return 'Enter a valid email';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _passwordController,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                  ),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.05),
-                ),
-                obscureText: _obscurePassword,
-                validator: (value) {
-                  if (value?.isEmpty ?? true) return 'Password is required';
-                  if (value!.length < 6) {
-                    return 'Password must be at least 6 characters';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _signUp,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFF5B545),
-                  foregroundColor: Colors.black87,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.black87))
-                    : const Text('CREATE ACCOUNT',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-              ),
+      body: Container(
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              PremiumUI.primary.withValues(alpha: 0.1),
+              PremiumUI.background,
             ],
           ),
         ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 120, 24, 40),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                PremiumUI.glassCard(
+                  child: Column(
+                    children: [
+                      const Icon(Icons.headset_mic_outlined, size: 48, color: PremiumUI.primary),
+                      const SizedBox(height: 16),
+                      Text('Caller Registration', style: PremiumUI.h1.copyWith(fontSize: 20)),
+                      const SizedBox(height: 8),
+                      Text('Secure agent registration engine', style: PremiumUI.subtitle),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+                _buildField(
+                  controller: _fullNameController,
+                  label: 'FULL NAME',
+                  icon: Icons.person_outline,
+                ),
+                const SizedBox(height: 16),
+                _buildField(
+                  controller: _inviteCodeController,
+                  label: 'Invite Code / Organization Code',
+                  icon: Icons.vpn_key_outlined,
+                  hint: 'Required for secure access',
+                ),
+                const SizedBox(height: 16),
+                _buildField(
+                  controller: _emailController,
+                  label: 'EMAIL ADDRESS',
+                  icon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+                _buildField(
+                  controller: _passwordController,
+                  label: 'PASSWORD',
+                  icon: Icons.lock_outline,
+                  obscure: _obscurePassword,
+                  suffix: IconButton(
+                    icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.white54, size: 18),
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _signUp,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: PremiumUI.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 8,
+                      shadowColor: PremiumUI.primary.withValues(alpha: 0.5),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                        : const Text('PROVISION AGENT', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _signUpWithGoogle,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white24),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    ),
+                    icon: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.g_mobiledata, color: Colors.black, size: 20),
+                    ),
+                    label: const Text('Sign up with Google', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _isLoading ? null : _autoFillTest,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: PremiumUI.primary, width: 1),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: const Text('GENERATE TEST AGENT DATA', style: TextStyle(color: PremiumUI.primary, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Agents must adhere to the Secure Queue protocols.',
+                  textAlign: TextAlign.center,
+                  style: PremiumUI.subtitle.copyWith(fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? hint,
+    bool obscure = false,
+    Widget? suffix,
+    TextInputType? keyboardType,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: PremiumUI.primary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          obscureText: obscure,
+          keyboardType: keyboardType,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+            prefixIcon: Icon(icon, color: Colors.white38, size: 18),
+            suffixIcon: suffix,
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.05),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.white10),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: PremiumUI.primary),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: PremiumUI.danger),
+            ),
+          ),
+          validator: (value) => value?.isEmpty ?? true ? 'Field required' : null,
+        ),
+      ],
     );
   }
 }

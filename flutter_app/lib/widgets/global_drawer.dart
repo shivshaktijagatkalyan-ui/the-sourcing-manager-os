@@ -16,6 +16,7 @@ import '../screens/role_management_screen.dart';
 import '../screens/system_health_dashboard.dart';
 import '../screens/abuse_monitoring_dashboard.dart';
 import '../screens/organization_dashboard.dart';
+import '../screens/super_admin_dashboard.dart';
 
 class GlobalDrawer extends StatefulWidget {
   const GlobalDrawer({super.key});
@@ -117,7 +118,19 @@ class _GlobalDrawerState extends State<GlobalDrawer> {
       case 'developer_admin':
         return [
           _drawerItem(context, 'My Dashboard', Icons.dashboard, () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => const RoleDashboardContainer()))),
-          _drawerItem(context, 'Organizations', Icons.business, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const OrganizationDashboard()))),
+          _drawerItem(
+            context,
+            'Organizations',
+            Icons.business,
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (c) => _role == 'platform_admin'
+                    ? const SuperAdminDashboard()
+                    : const OrganizationDashboard(),
+              ),
+            ),
+          ),
           _drawerItem(context, 'User Roles', Icons.admin_panel_settings, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const RoleManagementScreen()))),
           _drawerItem(context, 'Abuse Monitoring', Icons.security, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AbuseMonitoringDashboard()))),
           _drawerItem(context, 'System Health', Icons.speed, () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SystemHealthDashboard()))),

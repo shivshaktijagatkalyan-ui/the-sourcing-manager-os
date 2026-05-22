@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "std/http/server.ts"
 import {
   adminClient,
   cleanText,
@@ -11,6 +11,7 @@ import {
 } from "../_shared/sprint7.ts"
 
 const actions = new Set([
+  "update_broker_profile",
   "submit_lead",
   "assign_to_sm",
   "assign_to_caller",
@@ -60,6 +61,8 @@ const brokerageStatuses = new Set([
   "blocked",
 ])
 
+const protectedBrokerageStatuses = new Set(["locked", "eligible", "paid"])
+
 const issueTypes = new Set([
   "brokerage_credit",
   "site_visit_proof",
@@ -68,11 +71,11 @@ const issueTypes = new Set([
   "other",
 ])
 
-const digits = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/g
-
 function safeNotes(value: unknown) {
   const cleaned = cleanText(value, 500)
   if (!cleaned) return ""
+  // BUG-H3 FIX: fresh regex per call — g-flag makes RegExp stateful across calls
+  const digits = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/
   return digits.test(cleaned) ? "[CLEANED: Contact info removed]" : cleaned
 }
 
@@ -116,7 +119,18 @@ async function actorContext(admin: ReturnType<typeof adminClient>, userId: strin
 }
 
 async function linkedBrokerId(admin: ReturnType<typeof adminClient>, userId: string, orgId: string) {
-  const { data } = await admin
+  const { data: ownerLinked } = await admin
+    .from("brokers_public")
+    .select("id")
+    .eq("owner_user_id", userId)
+    .eq("organization_id", orgId)
+    .eq("status", "active")
+    .maybeSingle()
+
+  const ownerBrokerId = validUuid(ownerLinked?.id)
+  if (ownerBrokerId) return ownerBrokerId
+
+  const { data: legacyLinked } = await admin
     .from("brokers_public")
     .select("id")
     .eq("linked_user_id", userId)
@@ -124,7 +138,7 @@ async function linkedBrokerId(admin: ReturnType<typeof adminClient>, userId: str
     .eq("status", "active")
     .maybeSingle()
 
-  return validUuid(data?.id)
+  return validUuid(legacyLinked?.id)
 }
 
 async function canUseLead(admin: ReturnType<typeof adminClient>, userId: string, orgId: string, leadId: string) {
@@ -168,8 +182,61 @@ serve(async (req: Request) => {
     const action = typeof body.action === "string" ? body.action : ""
     if (!actions.has(action)) return safeJson({ ok: false, reason: "invalid_action" }, 400)
 
+    if (action === "update_broker_profile") {
+      const brokerId = await linkedBrokerId(admin, user.id, context.orgId)
+      if (!brokerId) return safeJson({ ok: false, reason: "broker_not_found" }, 404)
+
+      const brokerName = cleanText(body.broker_name, 120)
+      const companyName = cleanText(body.company_name, 120)
+      const reraNumber = cleanText(body.rera_number, 80)
+      const area = cleanText(body.area, 100)
+      const city = cleanText(body.city, 100)
+      const speciality = cleanText(body.speciality, 120)
+
+      if (!brokerName || !companyName || !reraNumber || !area || !city || !speciality) {
+        return safeJson({ ok: false, reason: "invalid_profile" }, 400)
+      }
+
+      // BUG-H4 FIX: align with Flutter validator — same India-standard RERA regex
+      const reraRegex = /^[A-Z]{1,3}[0-9A-Z\-]{8,}$/
+      if (!reraRegex.test(reraNumber.toUpperCase())) {
+        return safeJson({ ok: false, reason: "invalid_rera" }, 400)
+      }
+
+      const { error } = await admin
+        .from("brokers_public")
+        .update({
+          broker_name: brokerName,
+          broker_alias: brokerName,
+          company_name: companyName,
+          rera_number: reraNumber,
+          area,
+          city,
+          speciality,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", brokerId)
+        .eq("organization_id", context.orgId)
+
+      if (error) return safeJson({ ok: false, reason: "write_failed" }, 409)
+
+      await recordAudit(admin, user.id, context.orgId, brokerId, "broker_profile_updated", {
+        broker_id: brokerId,
+        fields: ["broker_name", "company_name", "rera_number", "area", "city", "speciality"],
+      })
+      return safeJson({ ok: true, status: "updated" })
+    }
+
     if (action === "submit_lead") {
-      const brokerId = validUuid(body.source_broker_id) ?? (await linkedBrokerId(admin, user.id, context.orgId))
+      const actorBrokerId = await linkedBrokerId(admin, user.id, context.orgId)
+      const requestedBrokerId = validUuid(body.source_broker_id)
+      const canManageBrokerCrm = await requirePermission(admin, user.id, "can_manage_broker_crm", context.orgId)
+
+      if (requestedBrokerId && requestedBrokerId !== actorBrokerId && !canManageBrokerCrm) {
+        return safeJson({ ok: false, reason: "forbidden_broker_ownership" }, 403)
+      }
+
+      const brokerId = requestedBrokerId ?? actorBrokerId
       if (!brokerId) return safeJson({ ok: false, reason: "broker_not_found" }, 404)
 
       const { data: broker } = await admin
@@ -221,10 +288,15 @@ serve(async (req: Request) => {
 
       const secretValue = typeof body.secure_value === "string" ? body.secure_value.trim() : ""
       if (secretValue) {
-        const { data: cipher } = await admin.rpc("encrypt_lead_contact", {
+        const encryptionKey = Deno.env.get("PHONE_ENCRYPTION_KEY") ?? ""
+        if (!encryptionKey) return safeJson({ ok: false, reason: "secure_config_missing" }, 503)
+
+        const { data: cipher, error: cipherError } = await admin.rpc("encrypt_lead_contact", {
           p_contact: secretValue,
-          p_key: Deno.env.get("PHONE_ENCRYPTION_KEY") ?? "",
+          p_key: encryptionKey,
         })
+        if (cipherError || !cipher) return safeJson({ ok: false, reason: "encryption_failed" }, 500)
+
         await admin.from("leads_sensitive").insert({
           lead_id: lead.id,
           phone_ciphertext: cipher,
@@ -368,6 +440,11 @@ serve(async (req: Request) => {
 
     if (action === "update_brokerage_status") {
       const status = safeBrokerageStatus(body.brokerage_status)
+      if (protectedBrokerageStatuses.has(status)) {
+        const canManagePayouts = await requirePermission(admin, user.id, "can_manage_payouts", context.orgId)
+        if (!canManagePayouts) return safeJson({ ok: false, reason: "forbidden_payout_status" }, 403)
+      }
+
       const { error } = await admin
         .from("leads_public")
         .update({ brokerage_status: status, updated_at: new Date().toISOString() })

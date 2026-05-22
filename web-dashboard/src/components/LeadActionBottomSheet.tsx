@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Phone, User, Calendar, Shield, AlertTriangle, CheckCircle, RotateCcw } from 'lucide-react';
+import { X, Phone, User, Calendar, Shield, AlertTriangle, RotateCcw } from 'lucide-react';
 
 interface LeadActionBottomSheetProps {
   isOpen: boolean;
@@ -49,6 +49,7 @@ const LeadActionBottomSheet: React.FC<LeadActionBottomSheetProps> = ({
                 <h3 className="text-lg font-bold text-white">Lead {leadAlias}</h3>
                 <button
                   onClick={onClose}
+                  aria-label="Close lead actions"
                   className="p-2 rounded-full hover:bg-white/5 transition-colors"
                 >
                   <X className="w-5 h-5 text-zinc-400" />

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'sourcing_manager_dashboard.dart';
 import 'caller_dashboard_screen.dart';
 import 'broker_dashboard_screen.dart';
-import 'access_restricted_screen.dart';
 import 'super_admin_dashboard.dart';
 import 'login_screen.dart';
+import 'access_restricted_screen.dart';
 import '../utils/role_resolver.dart';
 
 class RoleDashboardContainer extends StatefulWidget {
@@ -57,6 +57,7 @@ class _RoleDashboardContainerState extends State<RoleDashboardContainer> {
         return const SuperAdminDashboard();
       case 'anonymous':
         return LoginScreen(onAuthStateChanged: _fetchRole);
+      case 'unknown':
       default:
         return AccessRestrictedScreen(role: _role);
     }

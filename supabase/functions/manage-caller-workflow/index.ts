@@ -10,7 +10,7 @@ import {
   validUuid,
 } from "../_shared/sprint7.ts"
 
-const PHONE_REGEX = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/g
+const PHONE_REGEX = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/
 
 function sanitizeNotes(value: unknown) {
   const cleaned = cleanText(value, 500)

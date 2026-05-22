@@ -1,0 +1,27 @@
+Error: Timed out waiting for http://127.0.0.1:3107/broker: fetch failed
+    at waitForHttp (file:///C:/Users/iBUGG3D/Desktop/The%20Sourcing%20MAnager%20OS/scripts/final-broker-dashboard-check.mjs:179:9)
+    at async startDashboardServer (file:///C:/Users/iBUGG3D/Desktop/The%20Sourcing%20MAnager%20OS/scripts/final-broker-dashboard-check.mjs:204:3)
+    at async main (file:///C:/Users/iBUGG3D/Desktop/The%20Sourcing%20MAnager%20OS/scripts/final-broker-dashboard-check.mjs:480:16)
+
+--- stdout ---
+
+> web-dashboard@0.1.0 dev
+> next dev --webpack --hostname 127.0.0.1 --port 3107
+
+▲ Next.js 16.2.5 (webpack)
+- Local:         http://127.0.0.1:3107
+- Network:       http://127.0.0.1:3107
+- Environments: .env.local
+✓ Ready in 1031ms
+[?25h
+
+--- stderr ---
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3000
+- PID:          16464
+- Dir:          C:\Users\iBUGG3D\Desktop\The Sourcing MAnager OS\web-dashboard
+- Log:          .next\dev\logs\next-development.log
+
+Run taskkill /PID 16464 /F to stop it.
+

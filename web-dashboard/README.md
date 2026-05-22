@@ -24,11 +24,13 @@ A premium, secure, dataless broker business vault dashboard for The Sourcing Man
 ## Getting Started
 
 1. Install dependencies:
+
    ```bash
    npm install
    ```
 
 2. Run the development server:
+
    ```bash
    npm run dev
    ```
@@ -58,6 +60,7 @@ src/
 ## Security & Privacy
 
 This dashboard adheres to strict dataless principles:
+
 - No phone numbers displayed
 - No raw customer names
 - No contact export functionality
@@ -67,6 +70,7 @@ This dashboard adheres to strict dataless principles:
 ## Mock Data
 
 The dashboard uses safe mock data for demonstration:
+
 - Lead aliases (L-1042, etc.)
 - Safe project and area names
 - Budget ranges
@@ -75,6 +79,7 @@ The dashboard uses safe mock data for demonstration:
 ## Deployment
 
 Build for production:
+
 ```bash
 npm run build
 ```

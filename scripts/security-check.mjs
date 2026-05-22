@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const root = process.cwd();
@@ -27,6 +27,13 @@ const blockedPatterns = [
   { pattern: /last\s*4|last\s*four|masked\s*number/i, reason: 'partial or masked contact display is forbidden' },
 ];
 
+const edgeFunctionRawErrorPatterns = [
+  { pattern: /reason:\s*(err|error)\.message/i, reason: 'raw internal error messages must not be returned to clients' },
+  { pattern: /const\s+msg\s*=\s*error\s+instanceof\s+Error\s*\?\s*error\.message\s*:/i, reason: 'raw internal error aliases must not be returned to clients' },
+  { pattern: /reason:\s*msg\b/i, reason: 'raw internal error aliases must not be returned to clients' },
+  { pattern: /unknown_error/i, reason: 'generic internal failures should use stable public reason codes' },
+];
+
 const phoneWordAllowed = new Set([
   join('flutter_app', 'lib', 'screens', 'broker_upload.dart'),
   join('supabase', 'functions', 'broker-upload-lead', 'index.ts'),
@@ -44,6 +51,7 @@ const phoneWordAllowed = new Set([
   join('flutter_app', 'lib', 'screens', 'caller_lead_queue_screen.dart'),
   join('supabase', 'functions', 'lead-from-broker', 'index.ts'),
   join('supabase', 'functions', 'manage-caller-workflow', 'index.ts'),
+  join('supabase', 'functions', 'ai-lead-response', 'index.ts'),
 ]);
 
 function listFiles(dir) {
@@ -58,6 +66,18 @@ function listFiles(dir) {
 }
 
 const violations = [];
+
+const configPath = join(root, 'supabase', 'config.toml');
+if (existsSync(configPath)) {
+  const configText = readFileSync(configPath, 'utf8');
+  for (const match of configText.matchAll(/^\s*secret\s*=\s*"([^"]*)"/gim)) {
+    const value = match[1].trim();
+    if (value && !value.startsWith('env(') && !value.startsWith('encrypted:')) {
+      violations.push('supabase/config.toml: OAuth provider secrets must use env(...) or encrypted: values');
+      break;
+    }
+  }
+}
 
 for (const dir of scanDirs) {
   for (const file of listFiles(dir)) {
@@ -75,6 +95,14 @@ for (const dir of scanDirs) {
     for (const rule of blockedPatterns) {
       if (rule.pattern.test(text)) {
         violations.push(`${normalizedRel}: ${rule.reason}`);
+      }
+    }
+
+    if (normalizedRel.startsWith('supabase/functions/')) {
+      for (const rule of edgeFunctionRawErrorPatterns) {
+        if (rule.pattern.test(text)) {
+          violations.push(`${normalizedRel}: ${rule.reason}`);
+        }
       }
     }
 

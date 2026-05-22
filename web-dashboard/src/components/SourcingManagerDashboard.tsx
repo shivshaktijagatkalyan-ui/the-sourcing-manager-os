@@ -2,7 +2,9 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, XCircle, Clock, MapPin, User, Calendar, Eye } from 'lucide-react';
+import { CheckCircle, XCircle, MapPin, Calendar, Eye } from 'lucide-react';
+
+type DashboardTab = 'proposals' | 'scheduled' | 'performance';
 
 interface VisitProposal {
   id: string;
@@ -28,7 +30,7 @@ interface ScheduledVisit {
 }
 
 const SourcingManagerDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'proposals' | 'scheduled' | 'performance'>('proposals');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('proposals');
 
   const mockProposals: VisitProposal[] = [
     {
@@ -79,13 +81,11 @@ const SourcingManagerDashboard: React.FC = () => {
   ];
 
   const handleProposalAction = (proposalId: string, action: 'accept' | 'reject') => {
-    console.log(`Proposal ${proposalId}: ${action}`);
-    // Here you would call the API
+    window.dispatchEvent(new CustomEvent('visit-proposal-action', { detail: { proposalId, action } }));
   };
 
   const handleVisitAction = (visitId: string, action: string) => {
-    console.log(`Visit ${visitId}: ${action}`);
-    // Here you would call the API
+    window.dispatchEvent(new CustomEvent('site-visit-action', { detail: { visitId, action } }));
   };
 
   return (
@@ -100,14 +100,14 @@ const SourcingManagerDashboard: React.FC = () => {
 
       {/* Tabs */}
       <div className="flex bg-zinc-900/50 mx-4 mt-4 rounded-xl p-1">
-        {[
+        {([
           { id: 'proposals', label: 'Proposals', count: mockProposals.filter(p => p.status === 'pending').length },
           { id: 'scheduled', label: 'Scheduled', count: mockScheduledVisits.filter(v => v.status === 'scheduled').length },
           { id: 'performance', label: 'Performance' },
-        ].map((tab) => (
+        ] satisfies Array<{ id: DashboardTab; label: string; count?: number }>).map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.id
                 ? 'bg-orange-500 text-black'

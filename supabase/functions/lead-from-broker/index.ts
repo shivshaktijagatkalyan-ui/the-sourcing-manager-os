@@ -28,7 +28,7 @@ const LEAD_STATUSES = new Set([
   'revoked',
 ])
 
-const PHONE_REGEX = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/g
+const PHONE_REGEX = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/
 
 function sanitizeNotes(text: string): string {
   if (!text) return ''
@@ -114,12 +114,66 @@ serve(async (req: Request) => {
       // 1. Verify Broker belongs to Org
       const { data: brokerCheck } = await admin
         .from('brokers_public')
-        .select('id')
+        .select('id, assigned_sourcing_manager_id')
         .eq('id', bId)
         .eq('organization_id', orgId)
         .single()
       
       if (!brokerCheck) return safeJson({ ok: false, reason: "broker_not_found_in_org" }, 404)
+      const assignedManagerId = validUuid(brokerCheck.assigned_sourcing_manager_id)
+      if (!assignedManagerId) return safeJson({ ok: false, reason: "broker_manager_not_ready" }, 409)
+
+      let ciphertext: string | null = null
+      let phoneHash: string | null = null
+
+      // 1. Prepare PII & Check Duplicates if phone provided
+      if (phone) {
+        const encryptionKey = Deno.env.get("PHONE_ENCRYPTION_KEY") || ""
+        const hashSalt = Deno.env.get("PHONE_HASH_SALT") || "default_broker_salt_2026"
+
+        const { data: ingestion, error: ingestError } = await admin.rpc('ingest_lead_contact_secure', {
+          p_contact: phone,
+          p_enc_key: encryptionKey,
+          p_hash_salt: hashSalt
+        })
+
+        if (ingestError || !ingestion || ingestion.length === 0) {
+          throw new Error('encryption_failed')
+        }
+
+        ciphertext = ingestion[0].ciphertext
+        phoneHash = ingestion[0].phone_hash
+
+        // Check for duplicates in this Org
+        const { data: duplicateCheck } = await admin.rpc('check_duplicate_lead', {
+          p_phone_hash: phoneHash,
+          p_org_id: orgId
+        })
+
+        if (duplicateCheck && duplicateCheck.length > 0 && duplicateCheck[0].is_duplicate) {
+          const dup = duplicateCheck[0]
+          // Record Attempted Duplicate Abuse Event
+          await admin.from('abuse_events').insert({
+            organization_id: orgId,
+            actor_id: user.id,
+            lead_id: dup.existing_lead_id,
+            event_type: 'duplicate_lock_attempt',
+            severity: 'medium',
+            evidence_ref: {
+              attempted_alias: lead_alias,
+              existing_alias: dup.existing_lead_alias,
+              lock_status: dup.lock_status
+            }
+          })
+
+          return safeJson({
+            ok: false,
+            reason: "duplicate_lead_detected",
+            alias: dup.existing_lead_alias,
+            is_locked: dup.lock_status === 'active'
+          }, 409)
+        }
+      }
 
       // 2. Create Public Lead
       const { data: lead, error: leadError } = await admin
@@ -128,7 +182,8 @@ serve(async (req: Request) => {
           organization_id: orgId,
           source_broker_id: bId,
           broker_id: user.id,
-          assigned_manager_id: user.id,
+          assigned_manager_id: assignedManagerId,
+          assigned_sourcing_manager_id: assignedManagerId,
           alias: cleanText(lead_alias),
           area: cleanText(area),
           city: cleanText(city),
@@ -142,17 +197,12 @@ serve(async (req: Request) => {
 
       if (leadError || !lead) throw leadError
 
-      // 3. Encrypt Phone if provided
-      if (phone) {
-        const encryptionKey = Deno.env.get("PHONE_ENCRYPTION_KEY") || ""
-        const { data: cipher } = await admin.rpc('encrypt_lead_contact', {
-          p_contact: phone,
-          p_key: encryptionKey
-        })
-        
+      // 3. Store Sensitive Data if prepared
+      if (ciphertext && phoneHash) {
         await admin.from('leads_sensitive').insert({
           lead_id: lead.id,
-          phone_ciphertext: cipher,
+          phone_ciphertext: ciphertext,
+          phone_hash: phoneHash,
           encryption_version: 1
         })
       }

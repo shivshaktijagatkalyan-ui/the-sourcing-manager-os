@@ -12,6 +12,22 @@ import {
 } from "../_shared/sprint7.ts"
 
 const proofTypes = new Set(["gps", "qr", "visit_code", "photo", "visit_done", "no_show"])
+const allowedProofStates: Record<string, Set<string>> = {
+  no_show: new Set(["scheduled", "started", "client_reached_site"]),
+  gps: new Set(["started"]),
+  qr: new Set(["gps_verified"]),
+  visit_code: new Set(["gps_verified", "qr_verified"]),
+  photo: new Set(["gps_verified", "qr_verified"]),
+  visit_done: new Set(["photo_uploaded", "photo_verified"]),
+}
+
+function hasAllowedState(proofType: string, status: unknown) {
+  return typeof status === "string" && (allowedProofStates[proofType]?.has(status) ?? false)
+}
+
+function pathContainsRestrictedToken(path: string) {
+  return /[6-9]\d{9}/.test(path)
+}
 
 async function actorContext(admin: ReturnType<typeof adminClient>, userId: string) {
   const { data } = await admin
@@ -95,6 +111,10 @@ serve(async (req: Request) => {
       return safeJson({ ok: false, reason: "not_allowed" }, 403)
     }
 
+    if (!hasAllowedState(proofType, visit.status)) {
+      return safeJson({ ok: false, reason: "invalid_state" }, 409)
+    }
+
     const now = new Date().toISOString()
 
     if (proofType === "no_show") {
@@ -103,6 +123,7 @@ serve(async (req: Request) => {
         .update({ status: "no_show", no_show_at: now, updated_at: now })
         .eq("id", siteVisitId)
         .eq("organization_id", context.organization_id)
+        .eq("status", visit.status)
 
       await storeConfirmation(admin, visit, user.id, "no_show", "no_show")
       await recordAudit(admin, user.id, context.organization_id, null, "site_visit_no_show", {
@@ -150,6 +171,7 @@ serve(async (req: Request) => {
         })
         .eq("id", siteVisitId)
         .eq("organization_id", context.organization_id)
+        .eq("status", visit.status)
 
       await storeConfirmation(admin, visit, user.id, "gps", "gps_verified", {
         submitted_lat: lat,
@@ -189,6 +211,7 @@ serve(async (req: Request) => {
         .update(updatePayload)
         .eq("id", siteVisitId)
         .eq("organization_id", context.organization_id)
+        .eq("status", visit.status)
 
       await storeConfirmation(admin, visit, user.id, proofType, "qr_verified", { proof_ref_hash: proofHash })
       await recordAudit(admin, user.id, context.organization_id, null, "qr_verified", {
@@ -207,6 +230,9 @@ serve(async (req: Request) => {
       const ref = cleanText(body.proof_ref_hash, 180)
       const path = cleanText(body.photo_storage_path, 240)
       if (!ref && !path) return safeJson({ ok: false, reason: "proof_required" }, 400)
+      if (path && pathContainsRestrictedToken(path)) {
+        return safeJson({ ok: false, reason: "invalid_proof_path" }, 400)
+      }
 
       await admin
         .from("site_visits")
@@ -220,6 +246,7 @@ serve(async (req: Request) => {
         })
         .eq("id", siteVisitId)
         .eq("organization_id", context.organization_id)
+        .eq("status", visit.status)
 
       await storeConfirmation(admin, visit, user.id, "photo", "photo_uploaded", {
         proof_ref_hash: ref || null,
@@ -229,7 +256,44 @@ serve(async (req: Request) => {
       return safeJson({ ok: true, status: "photo_uploaded" })
     }
 
-    await admin
+    const lockLeadId = visit.source_lead_id ?? visit.lead_id
+    const { data: existingLock } = await admin
+      .from("broker_locks")
+      .select("id, broker_id")
+      .eq("lead_id", lockLeadId)
+      .eq("status", "active")
+      .maybeSingle()
+
+    const lockUntil = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString()
+    if (existingLock?.id && existingLock.broker_id !== visit.broker_id) {
+      await recordAudit(admin, user.id, context.organization_id, null, "broker_lock_conflict_blocked", {
+        site_visit_id: siteVisitId,
+        lead_id: lockLeadId,
+        source_broker_id: visit.source_broker_id,
+        status: "blocked",
+      })
+      return safeJson({ ok: false, reason: "active_lock_exists" }, 409)
+    }
+
+    if (existingLock?.id) {
+      const { error: lockUpdateError } = await admin
+        .from("broker_locks")
+        .update({ source_site_visit_id: siteVisitId, expires_at: lockUntil, updated_at: now })
+        .eq("id", existingLock.id)
+      if (lockUpdateError) return safeJson({ ok: false, reason: "lock_update_failed" }, 409)
+    } else {
+      const { error: lockInsertError } = await admin.from("broker_locks").insert({
+        lead_id: lockLeadId,
+        broker_id: visit.broker_id,
+        source_site_visit_id: siteVisitId,
+        status: "active",
+        starts_at: now,
+        expires_at: lockUntil,
+      })
+      if (lockInsertError) return safeJson({ ok: false, reason: "lock_creation_failed" }, 409)
+    }
+
+    const { error: visitDoneError } = await admin
       .from("site_visits")
       .update({
         status: "visit_done",
@@ -240,8 +304,10 @@ serve(async (req: Request) => {
       })
       .eq("id", siteVisitId)
       .eq("organization_id", context.organization_id)
+      .eq("status", visit.status)
+    if (visitDoneError) return safeJson({ ok: false, reason: "visit_update_failed" }, 409)
 
-    await admin
+    const { error: leadUpdateError } = await admin
       .from("leads_public")
       .update({
         lead_status: "visit_verified",
@@ -249,34 +315,9 @@ serve(async (req: Request) => {
         brokerage_status: "locked",
         updated_at: now,
       })
-      .eq("id", visit.source_lead_id ?? visit.lead_id)
+      .eq("id", lockLeadId)
       .eq("organization_id", context.organization_id)
-
-    const lockLeadId = visit.source_lead_id ?? visit.lead_id
-    const { data: existingLock } = await admin
-      .from("broker_locks")
-      .select("id")
-      .eq("lead_id", lockLeadId)
-      .eq("broker_id", visit.broker_id)
-      .eq("status", "active")
-      .maybeSingle()
-
-    const lockUntil = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString()
-    if (existingLock?.id) {
-      await admin
-        .from("broker_locks")
-        .update({ source_site_visit_id: siteVisitId, expires_at: lockUntil, updated_at: now })
-        .eq("id", existingLock.id)
-    } else {
-      await admin.from("broker_locks").insert({
-        lead_id: lockLeadId,
-        broker_id: visit.broker_id,
-        source_site_visit_id: siteVisitId,
-        status: "active",
-        starts_at: now,
-        expires_at: lockUntil,
-      })
-    }
+    if (leadUpdateError) return safeJson({ ok: false, reason: "lead_update_failed" }, 409)
 
     await storeConfirmation(admin, visit, user.id, "visit_done", "visit_done")
     await recordAudit(admin, user.id, context.organization_id, null, "visit_done", {

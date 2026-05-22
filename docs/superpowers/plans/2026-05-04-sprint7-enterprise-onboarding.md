@@ -13,6 +13,7 @@
 ### Task 1: Static Contract Gate
 
 **Files:**
+
 - Create: `scripts/sprint7-static-check.mjs`
 - Modify: `package.json`
 
@@ -22,6 +23,7 @@
 ### Task 2: Database Hardening
 
 **Files:**
+
 - Create: `supabase/migrations/20240510000100_sprint7_hardening.sql`
 
 - [ ] Add missing onboarding tables and invite hardening columns.
@@ -33,6 +35,7 @@
 ### Task 3: Edge Functions
 
 **Files:**
+
 - Modify: existing Sprint 7 Edge Functions.
 - Create: missing Sprint 7 Edge Functions.
 
@@ -44,6 +47,7 @@
 ### Task 4: Flutter Screens
 
 **Files:**
+
 - Modify existing onboarding screens.
 - Create missing onboarding operation screens.
 - Modify `flutter_app/lib/main.dart`.
@@ -55,6 +59,7 @@
 ### Task 5: Documentation
 
 **Files:**
+
 - Create/update Sprint 7 docs.
 
 - [ ] Document role and permission model.
@@ -64,6 +69,7 @@
 ### Task 6: Verification
 
 **Commands:**
+
 - `npm run security`
 - `npm run sprint7:check`
 - `flutter analyze`

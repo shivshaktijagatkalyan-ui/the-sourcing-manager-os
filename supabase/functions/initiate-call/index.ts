@@ -1,10 +1,29 @@
 // @ts-ignore: Deno import
 import { serve } from "std/http/server.ts";
-import { adminClient, currentUser, requirePermission, safeJson, recordAudit, validUuid } from "../_shared/sprint7.ts";
+import { adminClient, currentUser, requirePermission, safeJson, recordAudit, validUuid, hmacSha256 } from "../_shared/sprint7.ts";
 
 
 
 const allowedLoanFailures = new Set(["access_denied", "loan_expired", "revoked"]);
+
+function providerConfig() {
+  const isMock = Deno.env.get("ENABLE_PROVIDER_MOCK") === "true";
+  const config = {
+    sid: Deno.env.get("EXOTEL_SID") ?? (isMock ? "mock_sid" : ""),
+    apiKey: Deno.env.get("EXOTEL_API_KEY") ?? (isMock ? "mock_api_key" : ""),
+    apiToken: Deno.env.get("EXOTEL_API_TOKEN") ?? (isMock ? "mock_api_token" : ""),
+    callerId: Deno.env.get("EXOTEL_CALLER_ID") ?? (isMock ? "mock_caller_id" : ""),
+    callbackSecret: Deno.env.get("EXOTEL_CALLBACK_SECRET") ?? (isMock ? "mock_callback_secret" : ""),
+    supabaseUrl: Deno.env.get("SUPABASE_URL") ?? (isMock ? "http://localhost:54321" : ""),
+    subdomain: Deno.env.get("EXOTEL_SUBDOMAIN") || "api.in.exotel.com",
+  };
+
+  const missing = Object.entries(config)
+    .filter(([key, value]) => key !== "subdomain" && !value)
+    .map(([key]) => key);
+
+  return missing.length > 0 ? { ok: false as const, missing } : { ok: true as const, config };
+}
 
 async function markBlocked(admin: ReturnType<typeof adminClient>, callerId: string, leadId: string, orgId: string, status: string, loanId?: string) {
   await admin.from("call_attempts").insert({
@@ -86,7 +105,9 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (loanFailure) {
-      const safeStatus = allowedLoanFailures.has(loanFailure) ? loanFailure : "access_denied";
+      const safeStatus = loanFailure === "access_denied"
+        ? "blocked"
+        : (allowedLoanFailures.has(loanFailure) ? loanFailure : "blocked");
       await markBlocked(admin, user.id, leadId, pilot.org_id, safeStatus, loan?.id);
 
       if (loanFailure === 'revoked' || loanFailure === 'loan_expired') {
@@ -101,17 +122,30 @@ serve(async (req: Request): Promise<Response> => {
         })
       }
 
-      return safeJson({ ok: false, reason: safeStatus }, 403);
+      return safeJson({ ok: false, reason: loanFailure }, 403);
     }
 
+    // After loanFailure guard, loan is guaranteed non-null (loanFailure is empty only when loan is valid)
+    const validLoan = loan!;
+
     if (lead.consent_status !== "granted") {
-      await markBlocked(admin, user.id, leadId, pilot.org_id, "consent_required", loan.id);
+      await markBlocked(admin, user.id, leadId, pilot.org_id, "consent_required", validLoan.id);
       return safeJson({ ok: false, reason: "consent_required" }, 403);
     }
 
     if (lead.dnd_status === "blocked") {
-      await markBlocked(admin, user.id, leadId, pilot.org_id, "dnd_blocked", loan.id);
+      await markBlocked(admin, user.id, leadId, pilot.org_id, "dnd_blocked", validLoan.id);
       return safeJson({ ok: false, reason: "dnd_blocked" }, 403);
+    }
+
+    const exotel = providerConfig();
+    if (!exotel.ok) {
+      await markBlocked(admin, user.id, leadId, pilot.org_id, "config_error", validLoan.id);
+      await recordAudit(admin, user.id, pilot.org_id, leadId, "call_provider_config_missing", {
+        provider: "exotel",
+        missing: exotel.missing,
+      });
+      return safeJson({ ok: false, reason: "provider_config_missing" }, 503);
     }
 
     // 4. Fetch Secure PII
@@ -140,7 +174,7 @@ serve(async (req: Request): Promise<Response> => {
       .insert({
         lead_id: leadId,
         caller_id: user.id,
-        data_loan_id: loan.id,
+        data_loan_id: validLoan.id,
         provider: "exotel",
         call_status: "connecting",
       })
@@ -149,33 +183,66 @@ serve(async (req: Request): Promise<Response> => {
 
     if (attemptError || !attempt) throw new Error('call_attempt_insert_failed')
 
-    const sid = Deno.env.get("EXOTEL_SID") ?? "";
-    const apiKey = Deno.env.get("EXOTEL_API_KEY") ?? "";
-    const apiToken = Deno.env.get("EXOTEL_API_TOKEN") ?? "";
-    const subdomain = Deno.env.get("EXOTEL_SUBDOMAIN") || "api.in.exotel.com";
-    const bridgeEndpoint = `https://${subdomain}/v1/Accounts/${sid}/Calls/connect.json`;
-    const callbackUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/exotel-callback?attempt_id=${attempt.id}`;
-    const callerId = Deno.env.get("EXOTEL_CALLER_ID") ?? "";
+    const token = await hmacSha256(attempt.id, exotel.config.callbackSecret);
+    const bridgeEndpoint = `https://${exotel.config.subdomain}/v1/Accounts/${exotel.config.sid}/Calls/connect.json`;
+    const callbackUrl = `${exotel.config.supabaseUrl}/functions/v1/exotel-callback?attempt_id=${attempt.id}&callback_token=${token}`;
 
     bridgeBody = new URLSearchParams();
-    bridgeBody.append("From", callerId);
+    bridgeBody.append("From", exotel.config.callerId);
     bridgeBody.append("To", destination);
-    bridgeBody.append("CallerId", callerId);
+    bridgeBody.append("CallerId", exotel.config.callerId);
     bridgeBody.append("StatusCallback", callbackUrl);
+
+    if (Deno.env.get("ENABLE_PROVIDER_MOCK") === "true") {
+      await admin.from("call_attempts").update({ call_status: "queued" }).eq("id", attempt.id);
+      await recordAudit(admin, user.id, pilot.org_id, leadId, "call_simulated_in_uat", {
+        provider: "exotel",
+        attempt_id: attempt.id,
+        simulated: true,
+      });
+      return safeJson({ ok: true, status: "queued" }, 200);
+    }
 
     const bridgeResponse = await fetch(bridgeEndpoint, {
       method: "POST",
       headers: {
-        Authorization: `Basic ${btoa(`${apiKey}:${apiToken}`)}`,
+        Authorization: `Basic ${btoa(`${exotel.config.apiKey}:${exotel.config.apiToken}`)}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: bridgeBody,
     });
 
     if (!bridgeResponse.ok) {
+      const diagnostic: Record<string, any> = { 
+        status: bridgeResponse.status, 
+        provider: "exotel",
+        debug: {
+          sidLen: exotel.config.sid?.length,
+          sidFirstLast: exotel.config.sid ? `${exotel.config.sid[0]}...${exotel.config.sid[exotel.config.sid.length - 1]}` : "",
+          apiKeyLen: exotel.config.apiKey?.length,
+          apiKeyFirstLast: exotel.config.apiKey ? `${exotel.config.apiKey[0]}...${exotel.config.apiKey[exotel.config.apiKey.length - 1]}` : "",
+          apiTokenLen: exotel.config.apiToken?.length,
+          apiTokenFirstLast: exotel.config.apiToken ? `${exotel.config.apiToken[0]}...${exotel.config.apiToken[exotel.config.apiToken.length - 1]}` : "",
+          subdomain: exotel.config.subdomain,
+          callerId: exotel.config.callerId,
+          endpoint: bridgeEndpoint,
+        }
+      };
+      try {
+        const errorText = await bridgeResponse.text();
+        // Exotel returns XML by default if not specified, but we requested .json
+        const errorData = JSON.parse(errorText);
+        if (errorData?.RestException) {
+          diagnostic.error_code = errorData.RestException.Code;
+          diagnostic.message = errorData.RestException.Message;
+        }
+      } catch {
+        diagnostic.error_code = "parse_failed";
+      }
+
       await admin.from("call_attempts").update({ call_status: "provider_failed" }).eq("id", attempt.id);
-      await recordAudit(admin, user.id, pilot.org_id, leadId, "call_provider_failed", { provider: "exotel" });
-      return safeJson({ ok: false, reason: "provider_failed" }, 502);
+      await recordAudit(admin, user.id, pilot.org_id, leadId, "call_provider_failed", { diagnostic });
+      return safeJson({ ok: false, reason: "provider_failed", diagnostic }, 502);
     }
 
     await admin.from("call_attempts").update({ call_status: "queued" }).eq("id", attempt.id);

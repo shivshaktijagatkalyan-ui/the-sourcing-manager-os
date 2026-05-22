@@ -1,8 +1,31 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
+import Image from 'next/image';
 import { Shield, Zap, Lock } from 'lucide-react';
 import styles from './page.module.css';
+import { supabase } from '../lib/supabase';
 
 export default function Home() {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGoogleLogin = async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined,
+        },
+      });
+      if (error) throw error;
+    } catch {
+      alert('Login failed. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className={styles.heroContainer}>
       <div className={styles.heroBackground}></div>
@@ -22,9 +45,17 @@ export default function Home() {
         </p>
         
         <div className={styles.ctaContainer}>
-          <a href="/dashboard" className={styles.primaryButton}>
-            Launch OS
+          <a href="/broker" className={styles.primaryButton}>
+            Launch Broker OS
           </a>
+          <button
+            className={styles.googleButton}
+            onClick={handleGoogleLogin}
+            disabled={isLoading}
+          >
+            <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={18} height={18} />
+            <span>{isLoading ? 'Signing in...' : 'Sign in with Google'}</span>
+          </button>
           <a href="/broker" className={styles.secondaryButton}>
             Broker Portal
           </a>

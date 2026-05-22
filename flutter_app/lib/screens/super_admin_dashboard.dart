@@ -1,18 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../app_config.dart';
+import '../models/super_admin_snapshot.dart';
+import '../services/super_admin_dashboard_service.dart';
 import '../utils/premium_ui.dart';
+import '../widgets/super_admin/attention_queue_card.dart';
+import '../widgets/super_admin/audit_timeline_card.dart';
+import '../widgets/super_admin/organization_card.dart';
+import '../widgets/super_admin/platform_health_card.dart';
+import '../widgets/super_admin/project_health_card.dart';
+import '../widgets/super_admin/quick_action_panel.dart';
+import '../widgets/super_admin/risk_alert_card.dart';
+import '../widgets/super_admin/trust_operations_card.dart';
+import '../widgets/super_admin/workflow_bottleneck_card.dart';
+import '../widgets/super_admin/workforce_performance_card.dart';
 import 'abuse_monitoring_dashboard.dart';
 import 'admin_diagnostics_screen.dart';
 import 'broker_review_list.dart';
+import 'caller_lead_queue_screen.dart';
 import 'invite_user_screen.dart';
-import 'organization_dashboard.dart';
+import 'organization_onboarding_wizard.dart';
+import 'payout_ledger_screen.dart';
 import 'role_management_screen.dart';
+import 'sourcing_manager_dashboard.dart';
 import 'system_health_dashboard.dart';
 
 class SuperAdminDashboard extends StatefulWidget {
-  const SuperAdminDashboard({super.key});
+  final SuperAdminDashboardSnapshot? initialSnapshot;
+  final String? initialErrorReason;
+
+  const SuperAdminDashboard({
+    super.key,
+    this.initialSnapshot,
+    this.initialErrorReason,
+  });
 
   @override
   State<SuperAdminDashboard> createState() => _SuperAdminDashboardState();
@@ -20,186 +41,86 @@ class SuperAdminDashboard extends StatefulWidget {
 
 class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
   bool _isLoading = true;
-  Map<String, int> _kpis = {};
-  List<Map<String, dynamic>> _riskAlerts = [];
-  List<Map<String, dynamic>> _activity = [];
-  List<Map<String, dynamic>> _organizations = [];
-  List<Map<String, dynamic>> _projects = [];
+  SuperAdminDashboardSnapshot? _snapshot;
+  String? _errorReason;
 
   @override
   void initState() {
     super.initState();
-    _loadDashboard();
+    if (widget.initialSnapshot != null) {
+      _snapshot = widget.initialSnapshot;
+      _isLoading = false;
+    } else if (widget.initialErrorReason != null) {
+      _errorReason = widget.initialErrorReason;
+      _isLoading = false;
+    } else {
+      _loadDashboard();
+    }
   }
 
   Future<void> _loadDashboard() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorReason = null;
+    });
+
     try {
-      if (AppConfig.isSupabaseConfigured) {
+      if (AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
         await _loadLive();
       } else {
         await _loadDemo();
       }
+    } on SuperAdminDashboardException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _snapshot = null;
+        _errorReason = error.reason;
+        _isLoading = false;
+      });
     } catch (_) {
       if (!mounted) return;
-      await _loadDemo();
+      setState(() {
+        _snapshot = null;
+        _errorReason = 'dashboard_unavailable';
+        _isLoading = false;
+      });
     }
   }
 
   Future<void> _loadLive() async {
-    final client = Supabase.instance.client;
-
-    Future<int> countFrom(
-      String table, {
-      String select = 'id',
-      String? eqField,
-      dynamic eqValue,
-    }) async {
-      try {
-        dynamic query = client.from(table).select(select);
-        if (eqField != null) {
-          query = query.eq(eqField, eqValue);
-        }
-        final rows = await query;
-        return (rows as List).length;
-      } catch (_) {
-        return 0;
-      }
-    }
-
-    Future<List<Map<String, dynamic>>> selectSafe(
-      String table,
-      String select, {
-      int limit = 5,
-      String orderField = 'created_at',
-      bool ascending = false,
-      String? eqField,
-      dynamic eqValue,
-    }) async {
-      try {
-        dynamic query = client.from(table).select(select);
-        if (eqField != null) {
-          query = query.eq(eqField, eqValue);
-        }
-        final rows = await query.order(orderField, ascending: ascending).limit(limit);
-        return List<Map<String, dynamic>>.from(rows);
-      } catch (_) {
-        return <Map<String, dynamic>>[];
-      }
-    }
-
-    final totalOrganizations = await countFrom('organizations');
-    final activeProjects = await countFrom('projects', eqField: 'status', eqValue: 'active');
-    final sourcingManagers =
-        await countFrom('role_assignments', eqField: 'role_id', eqValue: 'sourcing_manager');
-    final totalBrokers = await countFrom('brokers_public');
-    final totalCallers =
-        await countFrom('role_assignments', eqField: 'role_id', eqValue: 'caller');
-    final totalLeads = await countFrom('leads_public');
-    final callsAttempted = await countFrom('call_attempts');
-    final siteVisitsScheduled =
-        await countFrom('site_visits', eqField: 'status', eqValue: 'scheduled');
-    final verifiedVisits = await countFrom('site_visits', eqField: 'status', eqValue: 'completed');
-    final activeLocks = await countFrom('broker_locks', eqField: 'status', eqValue: 'active');
-    final openDisputes = await countFrom('disputes', eqField: 'status', eqValue: 'open');
-    final riskAlerts = await countFrom('abuse_events', eqField: 'status', eqValue: 'open');
-    final healthIssues = await countFrom('system_health_events', eqField: 'status', eqValue: 'open');
-
-    final organizations = await selectSafe(
-      'organizations',
-      'id, name, status, created_at',
-      limit: 6,
-    );
-    final projects = await selectSafe(
-      'projects',
-      'id, project_name, city, area, status',
-      limit: 6,
-    );
-    final alerts = await selectSafe(
-      'abuse_events',
-      'id, event_type, severity, status, created_at',
-      limit: 6,
-    );
-    final activity = await selectSafe(
-      'audit_events',
-      'id, event_type, created_at',
-      limit: 8,
-    );
-
+    final snapshot = await SuperAdminDashboardService().loadSnapshot();
     if (!mounted) return;
     setState(() {
-      _kpis = {
-        'Total Organizations': totalOrganizations,
-        'Active Projects': activeProjects,
-        'Total Sourcing Managers': sourcingManagers,
-        'Total Brokers': totalBrokers,
-        'Total Callers': totalCallers,
-        'Total Leads': totalLeads,
-        'Calls Attempted': callsAttempted,
-        'Site Visits Scheduled': siteVisitsScheduled,
-        'Verified Visits': verifiedVisits,
-        'Active Broker Locks': activeLocks,
-        'Open Disputes': openDisputes,
-        'Risk Alerts': riskAlerts,
-        'System Health': healthIssues,
-      };
-      _riskAlerts = alerts;
-      _activity = activity;
-      _organizations = organizations;
-      _projects = projects;
+      _snapshot = snapshot;
+      _errorReason = null;
       _isLoading = false;
     });
   }
 
   Future<void> _loadDemo() async {
-    await Future.delayed(const Duration(milliseconds: 250));
+    await Future<void>.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
     setState(() {
-      _kpis = {
-        'Total Organizations': 4,
-        'Active Projects': 8,
-        'Total Sourcing Managers': 12,
-        'Total Brokers': 156,
-        'Total Callers': 42,
-        'Total Leads': 1240,
-        'Calls Attempted': 832,
-        'Site Visits Scheduled': 61,
-        'Verified Visits': 37,
-        'Active Broker Locks': 28,
-        'Open Disputes': 3,
-        'Risk Alerts': 2,
-        'System Health': 1,
-      };
-      _organizations = [
-        {'name': 'Wadhwa Mumbai', 'status': 'active', 'created_at': DateTime.now().toIso8601String()},
-        {'name': 'Pilot South', 'status': 'active', 'created_at': DateTime.now().subtract(const Duration(days: 2)).toIso8601String()},
-      ];
-      _projects = [
-        {'project_name': 'The Wadhwa Wise City', 'area': 'Panvel', 'city': 'Mumbai', 'status': 'active'},
-        {'project_name': 'Upper Thane', 'area': 'Thane', 'city': 'Mumbai', 'status': 'active'},
-      ];
-      _riskAlerts = [
-        {'event_type': 'paused_org_access_attempt', 'severity': 'critical', 'status': 'open'},
-        {'event_type': 'gps_outside_geofence_repeated', 'severity': 'high', 'status': 'open'},
-      ];
-      _activity = [
-        {'event_type': 'organization_created', 'created_at': DateTime.now().subtract(const Duration(minutes: 22)).toIso8601String()},
-        {'event_type': 'invite_created', 'created_at': DateTime.now().subtract(const Duration(hours: 1)).toIso8601String()},
-        {'event_type': 'user_activated', 'created_at': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String()},
-      ];
+      _snapshot = buildDemoSuperAdminSnapshot();
+      _errorReason = null;
       _isLoading = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final snapshot = _snapshot;
+    final status = normalizedDashboardBadge(
+      snapshot?.platformHealth.status ?? 'unknown',
+    );
+
     return Scaffold(
       backgroundColor: PremiumUI.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          'Super Admin Panel',
+          'Real Estate Operations Control Room',
           style: PremiumUI.h1.copyWith(fontSize: 20),
         ),
         actions: [
@@ -207,8 +128,8 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Center(
               child: PremiumUI.statusBadge(
-                (_kpis['System Health'] ?? 0) > 0 ? 'Attention' : 'Healthy',
-                (_kpis['System Health'] ?? 0) > 0 ? PremiumUI.warning : PremiumUI.secondary,
+                status == 'healthy' ? 'Healthy' : 'Attention',
+                status == 'healthy' ? PremiumUI.secondary : PremiumUI.warning,
               ),
             ),
           ),
@@ -216,72 +137,99 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadDashboard,
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  _topStrip(),
-                  const SizedBox(height: 18),
-                  _kpiGrid(),
-                  const SizedBox(height: 18),
-                  _quickActions(context),
-                  const SizedBox(height: 18),
-                  PremiumUI.sectionShell(
-                    title: 'Organizations',
-                    subtitle: 'Safe org metadata and activation status only',
-                    accentColor: PremiumUI.primary,
-                    child: _listRows(
-                      _organizations,
-                      (row) => row['name']?.toString() ?? 'Organization',
-                      (row) => row['status']?.toString() ?? 'pending',
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  PremiumUI.sectionShell(
-                    title: 'Projects',
-                    subtitle: 'Live project registry and operating areas',
-                    accentColor: PremiumUI.accent,
-                    child: _listRows(
-                      _projects,
-                      (row) => row['project_name']?.toString() ?? 'Project',
-                      (row) => '${row['area'] ?? '-'}, ${row['city'] ?? '-'}',
-                      trailing: (row) => PremiumUI.statusBadge(
-                        (row['status'] ?? 'inactive').toString(),
-                        PremiumUI.statusColor((row['status'] ?? 'inactive').toString()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          : snapshot == null
+              ? _errorState()
+              : RefreshIndicator(
+                  onRefresh: _loadDashboard,
+                  child: ListView(
+                    padding: const EdgeInsets.all(20),
                     children: [
-                      Expanded(
-                        child: PremiumUI.sectionShell(
-                          title: 'Risk Alerts',
-                          subtitle: 'Recent high-risk abuse events',
-                          accentColor: PremiumUI.danger,
-                          child: _riskTable(),
+                      _topStrip(snapshot),
+                      const SizedBox(height: 18),
+                      PlatformHealthCard(health: snapshot.platformHealth),
+                      const SizedBox(height: 18),
+                      _kpiGrid(snapshot),
+                      const SizedBox(height: 18),
+                      QuickActionPanel(
+                        allowedActions: snapshot.allowedActions,
+                        actions: _quickActions(),
+                      ),
+                      const SizedBox(height: 18),
+                      AttentionQueueCard(
+                        items: snapshot.attentionQueue,
+                        canOpen: (item) =>
+                            _destinationForAttention(
+                              item,
+                              snapshot.allowedActions,
+                            ) !=
+                            null,
+                        onOpen: (item) =>
+                            _openAttention(item, snapshot.allowedActions),
+                      ),
+                      const SizedBox(height: 18),
+                      WorkflowBottleneckCard(
+                        bottlenecks: snapshot.workflowBottlenecks,
+                        onOpen: (item) => _openRoute(
+                          item.route,
+                          item.action,
+                          snapshot.allowedActions,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: PremiumUI.sectionShell(
-                          title: 'Audit Events',
-                          subtitle: 'Safe operational trail',
-                          accentColor: PremiumUI.warning,
-                          child: _auditTimeline(),
-                        ),
-                      ),
+                      const SizedBox(height: 18),
+                      _workflowSummary(snapshot.workflowSummary),
+                      const SizedBox(height: 18),
+                      WorkforcePerformanceCard(workforce: snapshot.workforce),
+                      const SizedBox(height: 18),
+                      OrganizationCard(organizations: snapshot.organizations),
+                      const SizedBox(height: 18),
+                      ProjectHealthCard(projects: snapshot.projects),
+                      const SizedBox(height: 18),
+                      _trustAndRisk(snapshot),
+                      const SizedBox(height: 18),
+                      AuditTimelineCard(events: snapshot.auditEvents),
                     ],
                   ),
-                ],
-              ),
-            ),
+                ),
     );
   }
 
-  Widget _topStrip() {
+  Widget _errorState() {
+    final reason = _errorReason ?? 'dashboard_unavailable';
+    final safeReason = _safeReasonCode(reason);
+    final restricted = safeReason == 'forbidden_permission_required';
+
+    return RefreshIndicator(
+      onRefresh: _loadDashboard,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumUI.sectionShell(
+            title: restricted ? 'Access Restricted' : 'Dashboard Unavailable',
+            subtitle: restricted
+                ? 'Platform admin or ops admin permission is required.'
+                : 'The dashboard service returned a deterministic failure.',
+            accentColor: restricted ? PremiumUI.warning : PremiumUI.danger,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _errorLabel(safeReason),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Code: $safeReason',
+                  style: const TextStyle(color: PremiumUI.muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _topStrip(SuperAdminDashboardSnapshot snapshot) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -295,127 +243,183 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Platform Command Center', style: PremiumUI.h1.copyWith(fontSize: 24)),
+                Text(
+                  'FutureTrust Command Center',
+                  style: PremiumUI.h1.copyWith(fontSize: 24),
+                ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Organizations, users, projects, risks, and system health in one premium control surface.',
-                  style: TextStyle(color: PremiumUI.muted, fontSize: 13),
+                Text(
+                  'Generated ${_formatTimestamp(snapshot.generatedAt)}. Read, route, govern, audit.',
+                  style: const TextStyle(color: PremiumUI.muted, fontSize: 13),
                 ),
               ],
             ),
           ),
-          PremiumUI.statusBadge(
-            'No PII',
-            PremiumUI.secondary,
-          ),
+          PremiumUI.statusBadge('Safe Metadata', PremiumUI.secondary),
         ],
       ),
     );
   }
 
-  Widget _kpiGrid() {
-    final entries = _kpis.entries.toList();
-    final colors = <Color>[
-      PremiumUI.primary,
-      PremiumUI.accent,
-      PremiumUI.secondary,
-      PremiumUI.hot,
-      PremiumUI.warning,
-      PremiumUI.primary,
-      PremiumUI.accent,
-      PremiumUI.accent,
-      PremiumUI.secondary,
-      PremiumUI.hot,
-      PremiumUI.warning,
-      PremiumUI.danger,
-      PremiumUI.secondary,
-    ];
-    final icons = <IconData>[
-      Icons.business_outlined,
-      Icons.apartment_outlined,
-      Icons.person_pin_circle_outlined,
-      Icons.groups_outlined,
-      Icons.support_agent_outlined,
-      Icons.list_alt_outlined,
-      Icons.call_outlined,
-      Icons.event_available_outlined,
-      Icons.verified_outlined,
-      Icons.lock_clock_outlined,
-      Icons.gavel_outlined,
-      Icons.warning_amber_outlined,
-      Icons.monitor_heart_outlined,
+  Widget _kpiGrid(SuperAdminDashboardSnapshot snapshot) {
+    final kpiMeta = [
+      (
+        label: 'Organizations',
+        key: 'organizations',
+        icon: Icons.business_outlined,
+        color: PremiumUI.primary
+      ),
+      (
+        label: 'Active Projects',
+        key: 'active_projects',
+        icon: Icons.apartment_outlined,
+        color: PremiumUI.accent
+      ),
+      (
+        label: 'Active Brokers',
+        key: 'active_brokers',
+        icon: Icons.groups_outlined,
+        color: PremiumUI.hot
+      ),
+      (
+        label: 'Active Callers',
+        key: 'active_callers',
+        icon: Icons.support_agent_outlined,
+        color: PremiumUI.secondary
+      ),
+      (
+        label: 'Active SMs',
+        key: 'active_sms',
+        icon: Icons.manage_accounts_outlined,
+        color: PremiumUI.secondary
+      ),
+      (
+        label: 'Leads Today',
+        key: 'leads_today',
+        icon: Icons.list_alt_outlined,
+        color: PremiumUI.primary
+      ),
+      (
+        label: 'Verified Visits',
+        key: 'verified_visits_today',
+        icon: Icons.verified_outlined,
+        color: PremiumUI.secondary
+      ),
+      (
+        label: 'Broker Locks',
+        key: 'active_broker_locks',
+        icon: Icons.lock_clock_outlined,
+        color: PremiumUI.hot
+      ),
+      (
+        label: 'Open Risks',
+        key: 'open_risks',
+        icon: Icons.warning_amber_outlined,
+        color: PremiumUI.danger
+      ),
     ];
 
-    return GridView.builder(
-      itemCount: entries.length,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        childAspectRatio: 1.55,
-      ),
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        return PremiumUI.kpiCard(
-          entry.key,
-          entry.value.toString(),
-          icons[index],
-          colors[index],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 560
+            ? 1
+            : constraints.maxWidth < 980
+                ? 2
+                : 3;
+        return GridView.builder(
+          itemCount: kpiMeta.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            childAspectRatio: columns == 1 ? 2.4 : 1.65,
+          ),
+          itemBuilder: (context, index) {
+            final meta = kpiMeta[index];
+            return PremiumUI.kpiCard(
+              meta.label,
+              _kpiValue(snapshot, meta.key).toString(),
+              meta.icon,
+              meta.color,
+            );
+          },
         );
       },
     );
   }
 
-  Widget _quickActions(BuildContext context) {
-    final actions = <_AdminAction>[
-      const _AdminAction('Create Organization', Icons.business_outlined, PremiumUI.primary, OrganizationDashboard()),
-      const _AdminAction('Create Project', Icons.apartment_outlined, PremiumUI.accent, OrganizationDashboard()),
-      const _AdminAction('Invite User', Icons.person_add_alt_1_outlined, PremiumUI.secondary, InviteUserScreen()),
-      const _AdminAction('Assign Role', Icons.manage_accounts_outlined, PremiumUI.hot, RoleManagementScreen()),
-      const _AdminAction('View Risk', Icons.policy_outlined, PremiumUI.danger, AbuseMonitoringDashboard()),
-      const _AdminAction('View Health', Icons.health_and_safety_outlined, PremiumUI.warning, SystemHealthDashboard()),
-      const _AdminAction('Broker Reviews', Icons.rate_review_outlined, PremiumUI.accent, BrokerReviewListScreen()),
-      const _AdminAction('Diagnostics', Icons.memory_outlined, PremiumUI.secondary, AdminDiagnosticsScreen()),
+  int _kpiValue(SuperAdminDashboardSnapshot snapshot, String key) {
+    final aliases = {
+      'organizations': ['organizations', 'total_organizations'],
+      'active_brokers': ['active_brokers', 'total_brokers'],
+      'active_broker_locks': ['active_broker_locks', 'active_locks'],
+      'open_risks': ['open_risks', 'open_risk_alerts'],
+    };
+    for (final candidate in aliases[key] ?? [key]) {
+      final value = snapshot.kpi(candidate);
+      if (value != 0) return value;
+    }
+    return 0;
+  }
+
+  Widget _workflowSummary(AdminWorkflowSummary summary) {
+    final cards = [
+      (
+        label: 'Lead Intake Today',
+        value: summary.leadIntakeToday,
+        icon: Icons.input_outlined,
+        color: PremiumUI.primary
+      ),
+      (
+        label: 'Secure Calls Today',
+        value: summary.secureCallsToday,
+        icon: Icons.call_outlined,
+        color: PremiumUI.accent
+      ),
+      (
+        label: 'Site Visits Today',
+        value: summary.siteVisitsToday,
+        icon: Icons.event_available_outlined,
+        color: PremiumUI.secondary
+      ),
+      (
+        label: 'Proofs Pending',
+        value: summary.proofsPending,
+        icon: Icons.fact_check_outlined,
+        color: PremiumUI.warning
+      ),
+      (
+        label: 'Locks Created Today',
+        value: summary.locksCreatedToday,
+        icon: Icons.lock_outline,
+        color: PremiumUI.hot
+      ),
+      (
+        label: 'Payouts Pending',
+        value: summary.payoutsPendingReview,
+        icon: Icons.payments_outlined,
+        color: PremiumUI.danger
+      ),
     ];
 
     return PremiumUI.sectionShell(
-      title: 'Quick Actions',
-      subtitle: 'Protected admin workflows and safe diagnostics only',
+      title: 'Workflow Summary',
+      subtitle: 'Read-only counters across the sales and trust pipeline',
+      accentColor: PremiumUI.accent,
       child: Wrap(
         spacing: 12,
         runSpacing: 12,
-        children: actions
+        children: cards
             .map(
-              (action) => InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => action.screen),
-                  );
-                },
-                child: Container(
-                  width: 190,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: PremiumUI.cardColor,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: action.color.withValues(alpha: 0.18)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(action.icon, color: action.color, size: 18),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          action.label,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
-                  ),
+              (card) => SizedBox(
+                width: 190,
+                child: PremiumUI.kpiCard(
+                  card.label,
+                  card.value.toString(),
+                  card.icon,
+                  card.color,
                 ),
               ),
             )
@@ -424,146 +428,516 @@ class _SuperAdminDashboardState extends State<SuperAdminDashboard> {
     );
   }
 
-  Widget _listRows(
-    List<Map<String, dynamic>> rows,
-    String Function(Map<String, dynamic>) title,
-    String Function(Map<String, dynamic>) subtitle, {
-    Widget Function(Map<String, dynamic>)? trailing,
-  }) {
-    if (rows.isEmpty) {
-      return const Text('No safe metadata available.', style: TextStyle(color: PremiumUI.muted));
-    }
-
-    return Column(
-      children: rows
-          .map(
-            (row) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: PremiumUI.cardColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title(row), style: const TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 4),
-                        Text(subtitle(row), style: const TextStyle(color: PremiumUI.muted, fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  trailing == null
-                      ? PremiumUI.statusBadge(
-                          (row['status'] ?? 'active').toString(),
-                          PremiumUI.statusColor((row['status'] ?? 'active').toString()),
-                        )
-                      : trailing(row),
-                ],
-              ),
-            ),
-          )
-          .toList(),
+  Widget _trustAndRisk(SuperAdminDashboardSnapshot snapshot) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final trust = TrustOperationsCard(
+          rows: snapshot.trustOperations,
+          onOpen: (item) => _openRoute(
+            item.route,
+            item.action,
+            snapshot.allowedActions,
+          ),
+        );
+        final risk = RiskAlertCard(
+          alerts: snapshot.riskAlerts,
+          onOpen: (item) => _openRoute(
+            item.route,
+            item.action,
+            snapshot.allowedActions,
+          ),
+        );
+        if (constraints.maxWidth < 760) {
+          return Column(
+            children: [
+              trust,
+              const SizedBox(height: 18),
+              risk,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: trust),
+            const SizedBox(width: 18),
+            Expanded(child: risk),
+          ],
+        );
+      },
     );
   }
 
-  Widget _riskTable() {
-    if (_riskAlerts.isEmpty) {
-      return const Text('No open alerts.', style: TextStyle(color: PremiumUI.muted));
+  List<SuperAdminQuickAction> _quickActions() {
+    return [
+      SuperAdminQuickAction(
+        label: 'Create Organization',
+        icon: Icons.business_outlined,
+        color: PremiumUI.primary,
+        allowedBy: const {'manage_organizations', 'can_manage_org_users'},
+        onTap: () => _push(const OrganizationOnboardingWizard()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Invite User',
+        icon: Icons.person_add_alt_1_outlined,
+        color: PremiumUI.secondary,
+        allowedBy: const {'invite_users', 'can_manage_org_users'},
+        onTap: () => _push(const InviteUserScreen()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Assign Role',
+        icon: Icons.manage_accounts_outlined,
+        color: PremiumUI.hot,
+        allowedBy: const {'assign_roles', 'can_manage_org_users'},
+        onTap: () => _push(const RoleManagementScreen()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open Risk Dashboard',
+        icon: Icons.policy_outlined,
+        color: PremiumUI.danger,
+        allowedBy: const {'view_risk_dashboard', 'can_view_risk_dashboard'},
+        onTap: () => _push(const AbuseMonitoringDashboard()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open Diagnostics',
+        icon: Icons.memory_outlined,
+        color: PremiumUI.secondary,
+        allowedBy: const {'view_diagnostics'},
+        onTap: () => _push(const AdminDiagnosticsScreen()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open Assignment Queue',
+        icon: Icons.assignment_ind_outlined,
+        color: PremiumUI.accent,
+        allowedBy: const {'open_assignment_queue', 'view_workforce_reports'},
+        onTap: () => _push(const CallerLeadQueueScreen()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open Broker Locks',
+        icon: Icons.lock_clock_outlined,
+        color: PremiumUI.primary,
+        allowedBy: const {'view_broker_locks', 'can_view_payouts'},
+        onTap: () => _push(const PayoutLedgerScreen()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open System Health',
+        icon: Icons.health_and_safety_outlined,
+        color: PremiumUI.warning,
+        allowedBy: const {'view_system_health'},
+        onTap: () => _push(const SystemHealthDashboard()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open Release Gate Report',
+        icon: Icons.verified_user_outlined,
+        color: PremiumUI.secondary,
+        allowedBy: const {'view_platform_health', 'view_diagnostics'},
+        onTap: () => _push(const AdminDiagnosticsScreen()),
+      ),
+      SuperAdminQuickAction(
+        label: 'Open Visit Reviews',
+        icon: Icons.rate_review_outlined,
+        color: PremiumUI.accent,
+        allowedBy: const {'can_review_site_visits', 'broker_reviews'},
+        onTap: () => _push(const BrokerReviewListScreen()),
+      ),
+    ];
+  }
+
+  void _openRoute(String route, String action, List<String> allowedActions) {
+    final destination = _destinationFor(route, action, allowedActions);
+    if (destination != null) _push(destination);
+  }
+
+  void _openAttention(
+    AdminAttentionItem item,
+    List<String> allowedActions,
+  ) {
+    final destination = _destinationForAttention(item, allowedActions);
+    if (destination != null) _push(destination);
+  }
+
+  Widget? _destinationForAttention(
+    AdminAttentionItem item,
+    List<String> allowedActions,
+  ) {
+    if (item.route.isNotEmpty || item.action.isNotEmpty) {
+      final routed = _destinationFor(item.route, item.action, allowedActions);
+      if (routed != null) return routed;
     }
 
-    return Column(
-      children: _riskAlerts
-          .map(
-            (row) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: PremiumUI.cardColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      row['event_type']?.toString().replaceAll('_', ' ') ?? 'risk event',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  PremiumUI.statusBadge(
-                    (row['severity'] ?? 'medium').toString(),
-                    PremiumUI.statusColor((row['severity'] ?? 'medium').toString()),
-                  ),
-                ],
-              ),
-            ),
-          )
-          .toList(),
+    switch (item.type) {
+      case 'abuse_event':
+      case 'duplicate_risk':
+      case 'gps_failure':
+      case 'risk_alert':
+        return _destinationFor('risk_center', 'review_risk', allowedActions);
+      case 'failed_callback':
+      case 'held_sync_review':
+      case 'stuck_visit':
+        return _destinationFor(
+          'diagnostics',
+          'open_diagnostics',
+          allowedActions,
+        );
+      case 'system_health':
+        return _destinationFor(
+          'system_health',
+          'open_system_health',
+          allowedActions,
+        );
+      default:
+        return null;
+    }
+  }
+
+  Widget? _destinationFor(
+    String route,
+    String action,
+    List<String> allowedActions,
+  ) {
+    final allowed = allowedActions.toSet();
+    bool hasAny(Set<String> actions) => actions.any(allowed.contains);
+
+    switch (route) {
+      case 'risk_center':
+        return hasAny({
+          'view_risk_dashboard',
+          'can_view_risk_dashboard',
+          'review_risk',
+        })
+            ? const AbuseMonitoringDashboard()
+            : null;
+      case 'assignment_queue':
+        return hasAny({
+          'open_assignment_queue',
+          'view_workforce_reports',
+          'reassign_caller',
+          'escalate_to_sm',
+        })
+            ? const CallerLeadQueueScreen()
+            : null;
+      case 'diagnostics':
+        return hasAny({'view_diagnostics', 'open_diagnostics'})
+            ? const AdminDiagnosticsScreen()
+            : null;
+      case 'system_health':
+        return hasAny({'view_system_health', 'open_system_health'})
+            ? const SystemHealthDashboard()
+            : null;
+      case 'broker_locks':
+        return hasAny({
+          'view_broker_locks',
+          'can_view_payouts',
+          'open_broker_locks',
+        })
+            ? const PayoutLedgerScreen()
+            : null;
+      case 'organization_control':
+        return hasAny({'manage_organizations', 'can_manage_org_users'})
+            ? const OrganizationOnboardingWizard()
+            : null;
+      case 'workforce_reports':
+        return hasAny({'view_workforce_reports'})
+            ? const SourcingManagerDashboard()
+            : null;
+      default:
+        if (action == 'review_risk') {
+          return hasAny({'view_risk_dashboard', 'can_view_risk_dashboard'})
+              ? const AbuseMonitoringDashboard()
+              : null;
+        }
+        return null;
+    }
+  }
+
+  void _push(Widget screen) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => screen),
     );
   }
 
-  Widget _auditTimeline() {
-    if (_activity.isEmpty) {
-      return const Text('No recent safe audit events.', style: TextStyle(color: PremiumUI.muted));
-    }
-
-    return Column(
-      children: _activity
-          .map(
-            (row) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: const BoxDecoration(
-                      color: PremiumUI.warning,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          row['event_type']?.toString().replaceAll('_', ' ') ?? 'audit event',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _formatTimestamp(row['created_at']),
-                          style: const TextStyle(color: PremiumUI.muted, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-          .toList(),
-    );
+  String _formatTimestamp(DateTime? value) {
+    if (value == null) return 'timestamp unavailable';
+    return '${value.day}/${value.month} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
-  String _formatTimestamp(dynamic value) {
-    final parsed = DateTime.tryParse('${value ?? ''}');
-    if (parsed == null) return 'timestamp unavailable';
-    return '${parsed.day}/${parsed.month} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  String _safeReasonCode(String value) {
+    final reason = value.trim();
+    const known = {
+      'unauthorized',
+      'forbidden_permission_required',
+      'access_blocked_operational',
+      'dashboard_read_failed',
+      'dashboard_unavailable',
+      'invalid_response',
+    };
+    return known.contains(reason) ? reason : 'dashboard_error';
+  }
+
+  String _errorLabel(String reason) {
+    switch (reason) {
+      case 'unauthorized':
+        return 'Sign in is required.';
+      case 'forbidden_permission_required':
+        return 'Platform admin access is required.';
+      case 'access_blocked_operational':
+        return 'The organization or user status is blocked.';
+      case 'dashboard_read_failed':
+        return 'Dashboard data could not be read.';
+      case 'dashboard_unavailable':
+        return 'Dashboard data is unavailable.';
+      case 'dashboard_error':
+        return 'Dashboard request failed.';
+      default:
+        return 'Dashboard request was not approved.';
+    }
   }
 }
 
-class _AdminAction {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final Widget screen;
-
-  const _AdminAction(this.label, this.icon, this.color, this.screen);
+SuperAdminDashboardSnapshot buildDemoSuperAdminSnapshot() {
+  final now = DateTime.now();
+  return SuperAdminDashboardSnapshot(
+    generatedAt: now,
+    platformHealth: const AdminPlatformHealth(
+      status: 'warning',
+      failedFunctions: 1,
+      providerFailures: 0,
+      callbackFailures: 2,
+      lastReleaseGate: 'pass',
+      migrationDrift: 'unknown',
+      securityScanStatus: 'pass',
+      lastEvent: 'held_sync_review',
+    ),
+    health: const AdminHealth(
+      status: 'warning',
+      lastEvent: 'held_sync_review',
+      criticalFailures1h: 1,
+    ),
+    kpis: const {
+      'organizations': 4,
+      'active_projects': 8,
+      'active_brokers': 156,
+      'active_callers': 42,
+      'active_sms': 12,
+      'leads_today': 32,
+      'verified_visits_today': 9,
+      'active_broker_locks': 28,
+      'open_risks': 2,
+      'total_organizations': 4,
+      'total_brokers': 156,
+      'active_locks': 28,
+      'open_risk_alerts': 2,
+    },
+    organizations: [
+      AdminOrganizationRow(
+        id: 'org_demo_developer',
+        name: 'Demo Developer Group',
+        status: 'active',
+        projectsCount: 5,
+        activeUsers: 18,
+        openRiskAlerts: 1,
+        billingStatus: 'active',
+        createdAt: now.subtract(const Duration(days: 8)),
+      ),
+      AdminOrganizationRow(
+        id: 'org_pilot_west',
+        name: 'Pilot West Region',
+        status: 'active',
+        projectsCount: 3,
+        activeUsers: 11,
+        openRiskAlerts: 0,
+        billingStatus: 'active',
+        createdAt: now.subtract(const Duration(days: 2)),
+      ),
+    ],
+    projects: const [
+      AdminProjectRow(
+        id: 'project_harbor_heights',
+        name: 'Harbor Heights',
+        city: 'Mumbai',
+        area: 'Worli',
+        status: 'active',
+        activeLeads: 84,
+        verifiedVisits: 12,
+        activeBrokers: 31,
+        inventoryUnits: 120,
+        conversionRate: 14,
+        inventoryStatus: 'active',
+        freeLeadBankStatus: 'healthy',
+      ),
+      AdminProjectRow(
+        id: 'project_green_court',
+        name: 'Green Court Residences',
+        city: 'Pune',
+        area: 'Baner',
+        status: 'active',
+        activeLeads: 57,
+        verifiedVisits: 9,
+        activeBrokers: 24,
+        inventoryUnits: 80,
+        conversionRate: 16,
+        inventoryStatus: 'active',
+        freeLeadBankStatus: 'warning',
+      ),
+    ],
+    attentionQueue: [
+      AdminAttentionItem(
+        id: 'attention_gps_variance',
+        type: 'gps_failure',
+        severity: 'high',
+        title: 'Repeated GPS variance',
+        reasonCode: 'gps_variance_repeated',
+        organizationId: 'org_demo_developer',
+        safeRef: 'risk:demo-001',
+        action: 'review_risk',
+        route: 'risk_center',
+        createdAt: now.subtract(const Duration(minutes: 18)),
+      ),
+      AdminAttentionItem(
+        id: 'attention_sync_review',
+        type: 'stuck_visit',
+        severity: 'medium',
+        title: 'Held sync review pending',
+        reasonCode: 'manual_review_required',
+        organizationId: 'org_pilot_west',
+        safeRef: 'visit:demo-014',
+        action: 'open_diagnostics',
+        route: 'diagnostics',
+        createdAt: now.subtract(const Duration(hours: 2)),
+      ),
+    ],
+    workflowSummary: const AdminWorkflowSummary(
+      leadIntakeToday: 32,
+      secureCallsToday: 21,
+      siteVisitsToday: 9,
+      proofsPending: 6,
+      locksCreatedToday: 5,
+      payoutsPendingReview: 2,
+      unassignedLeads: 7,
+      overloadedCallers: 2,
+      idleCallers: 4,
+      delayedFollowups: 5,
+      stuckVisits: 3,
+    ),
+    workforce: const AdminWorkforceSnapshot(
+      brokers: [
+        AdminPerformanceRow(
+          id: 'broker_demo_1',
+          label: 'Broker Cluster A',
+          role: 'broker',
+          status: 'active',
+          riskLevel: 'low',
+          efficiencyScore: 82,
+          metrics: {
+            'leads': 44,
+            'visits': 12,
+            'locks': 5,
+            'trust': 88,
+          },
+        ),
+      ],
+      callers: [
+        AdminPerformanceRow(
+          id: 'caller_demo_1',
+          label: 'Caller Team West',
+          role: 'caller',
+          status: 'active',
+          riskLevel: 'medium',
+          efficiencyScore: 74,
+          metrics: {
+            'assigned': 31,
+            'attempted': 26,
+            'connected': 18,
+            'interested': 9,
+          },
+        ),
+      ],
+      sourcingManagers: [
+        AdminPerformanceRow(
+          id: 'sm_demo_1',
+          label: 'SM Team Mumbai',
+          role: 'sourcing_manager',
+          status: 'active',
+          riskLevel: 'low',
+          efficiencyScore: 86,
+          metrics: {
+            'meetings': 8,
+            'scheduled': 11,
+            'verified': 7,
+            'projects': 4,
+          },
+        ),
+      ],
+    ),
+    workflowBottlenecks: [
+      AdminOperationalRow(
+        id: 'bottleneck_unassigned',
+        type: 'stuck_lead',
+        severity: 'high',
+        title: 'Leads waiting for caller assignment',
+        safeRef: 'queue:assignment',
+        action: 'open_assignment_queue',
+        route: 'assignment_queue',
+        metrics: const {'count': 7},
+        createdAt: now.subtract(const Duration(minutes: 11)),
+      ),
+    ],
+    trustOperations: [
+      AdminOperationalRow(
+        id: 'trust_lock_review',
+        type: 'broker_lock',
+        severity: 'medium',
+        title: 'Broker locks pending payout review',
+        safeRef: 'locks:pending',
+        action: 'open_broker_locks',
+        route: 'broker_locks',
+        metrics: const {'count': 2},
+        createdAt: now.subtract(const Duration(hours: 3)),
+      ),
+    ],
+    riskAlerts: [
+      AdminOperationalRow(
+        id: 'risk_duplicate_uploads',
+        type: 'duplicate_risk',
+        severity: 'high',
+        title: 'Duplicate upload pattern detected',
+        safeRef: 'risk:duplicate',
+        action: 'review_risk',
+        route: 'risk_center',
+        metrics: const {'count': 3},
+        createdAt: now.subtract(const Duration(minutes: 30)),
+      ),
+    ],
+    auditEvents: [
+      AdminAuditEventRow(
+        id: 'audit_org_created',
+        eventType: 'organization_created',
+        actorRole: 'platform_admin',
+        organizationId: 'org_demo_developer',
+        createdAt: now.subtract(const Duration(minutes: 22)),
+      ),
+      AdminAuditEventRow(
+        id: 'audit_invite_created',
+        eventType: 'invite_created',
+        actorRole: 'platform_admin',
+        organizationId: 'org_pilot_west',
+        createdAt: now.subtract(const Duration(hours: 1)),
+      ),
+    ],
+    allowedActions: const [
+      'view_super_admin_dashboard',
+      'view_platform_health',
+      'view_risk_dashboard',
+      'view_system_health',
+      'view_diagnostics',
+      'view_workforce_reports',
+      'open_assignment_queue',
+      'view_broker_locks',
+      'manage_organizations',
+      'invite_users',
+      'assign_roles',
+      'can_review_site_visits',
+    ],
+  );
 }

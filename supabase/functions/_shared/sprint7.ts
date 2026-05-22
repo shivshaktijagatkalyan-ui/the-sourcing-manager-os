@@ -90,6 +90,29 @@ export async function sha256(value: string) {
   return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
+export async function hmacSha256(value: string, secret: string) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(signature)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+export function timingSafeEqualHex(left: string, right: string) {
+  if (!/^[0-9a-f]+$/i.test(left) || !/^[0-9a-f]+$/i.test(right)) return false
+  if (left.length !== right.length) return false
+
+  let diff = 0
+  for (let i = 0; i < left.length; i++) {
+    diff |= left.charCodeAt(i) ^ right.charCodeAt(i)
+  }
+  return diff === 0
+}
+
 export async function privateHash(value: string) {
   return sha256(`${value}:${env('SUPABASE_SERVICE_ROLE_KEY')}`)
 }
@@ -142,8 +165,44 @@ export async function recordAudit(
     return
   }
 
+  const leadScopedEvents = new Set([
+    'abuse_event_flagged',
+    'abuse_event_resolved',
+    'ai_call_failed',
+    'ai_call_initiated',
+    'broker_followup_set',
+    'broker_issue_raised',
+    'broker_self_call_blocked',
+    'broker_self_call_provider_config_missing',
+    'broker_self_call_provider_failed',
+    'broker_self_call_queued',
+    'broker_vault_lead_submitted',
+    'brokerage_status_updated',
+    'booking_stage_updated',
+    'call_blocked',
+    'call_callback_received',
+    'call_callback_rejected',
+    'call_provider_config_missing',
+    'call_provider_failed',
+    'call_queued',
+    'data_loan_extended',
+    'data_loan_granted',
+    'data_loan_revoked',
+    'lead_assigned_to_caller',
+    'lead_assigned_to_sm',
+    'lead_quality_updated',
+    'lead_received_from_broker',
+    'lead_uploaded',
+    'site_visit_scheduled_from_broker_lead',
+    'user_freeze_recommended',
+  ])
+
+  const contextLeadId = validUuid(context.lead_id)
+  const leadId = contextLeadId ?? (leadScopedEvents.has(eventType) ? validUuid(targetUserId) : null)
+
   await admin.from('audit_events').insert({
     actor_id: actorId,
+    lead_id: leadId,
     event_type: eventType,
     event_context: {
       ...context,

@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "security": "node scripts/security-check.mjs",
+    "ai:tools:check": "node scripts/ai-safe-tool-check.mjs",
+    "broker-dashboard:final-check": "node scripts/final-broker-dashboard-check.mjs",
     "build": "node scripts/flutter-build.mjs",
     "sprint7:check": "node scripts/sprint7-static-check.mjs",
     "supabase": "supabase"
@@ -14,6 +16,10 @@
   "license": "AGPL-3.0-only",
   "type": "commonjs",
   "devDependencies": {
-    "supabase": "^2.98.0"
+    "supabase": "^2.98.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4"
   }
 }

@@ -1,17 +1,49 @@
 # sourcing_manager_os
 
-A new Flutter project.
+A Flutter Web PWA frontend for The Sourcing Manager OS.
 
-## Getting Started
+## Local development
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK 3.x or later
+- Chrome browser
+- Supabase CLI / Supabase project credentials (for full auth flow)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Run locally
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```powershell
+cd flutter_app
+flutter clean
+flutter pub get
+flutter run -d chrome --web-renderer html --web-port 8081 --dart-define=SUPABASE_URL="https://your-project.supabase.co" --dart-define=SUPABASE_ANON_KEY="your-anon-key"
+```
+
+### Training mode
+
+If Supabase is not configured, the app will fall back to demo training mode by default.
+Use `?mockRole=sourcing_manager` in the web URL to force a mock role.
+
+Example:
+
+```powershell
+flutter run -d chrome --web-renderer html --web-port 8081
+```
+
+Then open:
+
+```
+http://localhost:8081/?mockRole=sourcing_manager
+```
+
+### Debugging blank screen issues
+
+- Open DevTools Console and look for `main: startup begin`.
+- Verify `Supabase.initialize` logs and any errors.
+- Confirm the page shows the loader text from `web/index.html`.
+- If the page stays blank, there may be a widget build failure or a missing `dart-define` value.
+
+## Notes
+
+The app uses `AppConfig` with compile-time environment variables for Supabase.
+If you are running without Supabase, use training mode or local mock roles.

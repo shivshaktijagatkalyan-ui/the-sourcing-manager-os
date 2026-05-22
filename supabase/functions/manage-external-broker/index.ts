@@ -13,7 +13,7 @@ const ALLOWED_ACTIONS = new Set([
   'log_activity'
 ])
 
-const PHONE_REGEX = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/g
+const PHONE_REGEX = /(\+?\d{1,4}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/
 
 function sanitizeNotes(text: string): string {
   if (!text) return ''

@@ -30,6 +30,13 @@ BLOCKED_PATTERNS = [
     (re.compile(r"last\s*4|last\s*four|masked\s*number", re.IGNORECASE), "partial or masked contact display is forbidden"),
 ]
 
+EDGE_FUNCTION_RAW_ERROR_PATTERNS = [
+    (re.compile(r"reason:\s*(err|error)\.message", re.IGNORECASE), "raw internal error messages must not be returned to clients"),
+    (re.compile(r"const\s+msg\s*=\s*error\s+instanceof\s+Error\s*\?\s*error\.message\s*:", re.IGNORECASE), "raw internal error aliases must not be returned to clients"),
+    (re.compile(r"reason:\s*msg\b", re.IGNORECASE), "raw internal error aliases must not be returned to clients"),
+    (re.compile(r"unknown_error", re.IGNORECASE), "generic internal failures should use stable public reason codes"),
+]
+
 CONTACT_WORD_ALLOWED = {
     "flutter_app/lib/screens/broker_upload.dart",
     "supabase/functions/broker-upload-lead/index.ts",
@@ -47,6 +54,7 @@ CONTACT_WORD_ALLOWED = {
     "flutter_app/lib/screens/caller_lead_queue_screen.dart",
     "supabase/functions/lead-from-broker/index.ts",
     "supabase/functions/manage-caller-workflow/index.ts",
+    "supabase/functions/ai-lead-response/index.ts",
 }
 
 
@@ -62,6 +70,15 @@ def iter_source_files():
 def main() -> int:
     violations = []
 
+    config_path = ROOT / "supabase" / "config.toml"
+    if config_path.exists():
+        config_text = config_path.read_text(encoding="utf-8")
+        for match in re.finditer(r'^\s*secret\s*=\s*"([^"]*)"', config_text, re.IGNORECASE | re.MULTILINE):
+            value = match.group(1).strip()
+            if value and not value.startswith("env(") and not value.startswith("encrypted:"):
+                violations.append("supabase/config.toml: OAuth provider secrets must use env(...) or encrypted: values")
+                break
+
     for path in iter_source_files():
         rel = path.relative_to(ROOT).as_posix()
         text = path.read_text(encoding="utf-8")
@@ -75,7 +92,10 @@ def main() -> int:
             if pattern.search(text):
                 violations.append(f"{rel}: {reason}")
 
-
+        if rel.startswith("supabase/functions/"):
+            for pattern, reason in EDGE_FUNCTION_RAW_ERROR_PATTERNS:
+                if pattern.search(text):
+                    violations.append(f"{rel}: {reason}")
 
         if rel not in CONTACT_WORD_ALLOWED and re.search(r"\b(phone|mobile|whatsapp)\b", text, re.IGNORECASE):
             violations.append(f"{rel}: contact wording outside broker upload flow")

@@ -1,4 +1,31 @@
 
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/dashboard", "http://localhost:3000", "http://localhost:3000/"]
+
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1m0s"
+otp_length = 8
+otp_expiry = 3600
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = "https://gblvnjilpcxhygvzikwe.supabase.co/auth/v1/callback"
+
 [functions.accept-invite]
 verify_jwt = true
 import_map = "functions/import_map.json"
@@ -8,6 +35,18 @@ verify_jwt = true
 import_map = "functions/import_map.json"
 
 [functions.activate-user]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.ai-lead-response]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.ai-voice-callback]
+verify_jwt = false
+import_map = "functions/import_map.json"
+
+[functions.ai-voice-churn]
 verify_jwt = true
 import_map = "functions/import_map.json"
 
@@ -135,6 +174,34 @@ import_map = "functions/import_map.json"
 verify_jwt = true
 import_map = "functions/import_map.json"
 
+[functions.super-admin-dashboard]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.trust-create-followup]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.trust-get-broker-lock-status]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.trust-get-followup-risk]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.trust-get-lead-summary]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.trust-get-site-visit-proof]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.trust-recommend-next-action]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
 [functions.update-permission-template]
 verify_jwt = true
 import_map = "functions/import_map.json"
@@ -148,5 +215,37 @@ verify_jwt = true
 import_map = "functions/import_map.json"
 
 [functions.complete-onboarding]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.confirm-site-visit-arrival]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.initiate-broker-call]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.lead-from-broker]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.manage-caller-workflow]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.manage-external-broker]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.propose-site-visit]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.review-site-visit-proposal]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.verify-site-visit-proof]
 verify_jwt = true
 import_map = "functions/import_map.json"

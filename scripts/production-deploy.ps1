@@ -49,7 +49,7 @@ function Test-ExternalTool {
     if ($null -eq $tool -and $Name -eq "Supabase CLI") {
         $npx = Get-Command "npx" -ErrorAction SilentlyContinue
         if ($null -ne $npx) {
-            $test = npx supabase --version 2>$null
+            npx supabase --version 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 Write-Host " OK (using npx supabase)" -ForegroundColor Green
                 return $true
@@ -94,9 +94,8 @@ function Test-Python3 {
     $pathsToTest += Join-Path $userProfile "AppData\Local\Programs\Python\Python311\python.exe"
 
     foreach ($cmd in $pathsToTest) {
-        $fullCmd = $cmd
-        $args = @("--version")
-        if ($cmd -eq "py") { $args = @("-3", "--version") }
+        $versionCheckArgs = @("--version")
+        if ($cmd -eq "py") { $versionCheckArgs = @("-3", "--version") }
 
         $oldErrorPreference = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
@@ -104,7 +103,7 @@ function Test-Python3 {
             if ($cmd -match "python\.exe$") {
                 $versionOutput = & $cmd --version 2>$null
             } else {
-                $versionOutput = & $cmd @args 2>$null
+                $versionOutput = & $cmd @versionCheckArgs 2>$null
             }
             $versionExitCode = $LASTEXITCODE
         }

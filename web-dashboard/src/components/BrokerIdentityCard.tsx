@@ -73,7 +73,7 @@ const BrokerIdentityCard: React.FC = () => {
 
       <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
         <p className="text-sm text-blue-400 text-center">
-          "Aapka broker credit system mein protected hai."
+          Aapka broker credit system mein protected hai.
         </p>
       </div>
     </motion.div>

@@ -1,0 +1,83 @@
+{
+  "status": "PASS",
+  "url": "http://127.0.0.1:3107/broker",
+  "startedLocalServer": true,
+  "screenshots": [
+    "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-mobile.png",
+    "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-desktop.png",
+    "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-intake-mobile.png",
+    "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-proposal-mobile.png",
+    "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-lock-mobile.png",
+    "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-scale-mobile.png"
+  ],
+  "checks": {
+    "requiredTexts": 20,
+    "requiredButtons": 13,
+    "viewportCount": 2,
+    "rawPhoneExposure": false,
+    "horizontalOverflow": false,
+    "actionsBottomSheet": true,
+    "siteVisitProposal": true,
+    "scaleAssignment": true
+  },
+  "results": [
+    {
+      "viewport": "mobile",
+      "screenshot": "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-mobile.png",
+      "state": {
+        "title": "FutureTrust Broker Dashboard",
+        "url": "http://127.0.0.1:3107/broker",
+        "textLength": 16388,
+        "missingTexts": [],
+        "missingButtons": [],
+        "leadAliases": [
+          "L-1088",
+          "L-1042",
+          "L-2090",
+          "L-2270",
+          "L-2450",
+          "L-2630",
+          "L-2810",
+          "L-2990",
+          "L-1177",
+          "L-2018",
+          "L-2054",
+          "L-2126"
+        ],
+        "rawPhoneMatches": [],
+        "scrollWidth": 390,
+        "viewportWidth": 390,
+        "hasHorizontalOverflow": false
+      }
+    },
+    {
+      "viewport": "desktop",
+      "screenshot": "C:\\Users\\iBUGG3D\\Desktop\\The Sourcing MAnager OS\\output\\playwright\\broker-dashboard-desktop.png",
+      "state": {
+        "title": "FutureTrust Broker Dashboard",
+        "url": "http://127.0.0.1:3107/broker",
+        "textLength": 16388,
+        "missingTexts": [],
+        "missingButtons": [],
+        "leadAliases": [
+          "L-1088",
+          "L-1042",
+          "L-2090",
+          "L-2270",
+          "L-2450",
+          "L-2630",
+          "L-2810",
+          "L-2990",
+          "L-1177",
+          "L-2018",
+          "L-2054",
+          "L-2126"
+        ],
+        "rawPhoneMatches": [],
+        "scrollWidth": 1351,
+        "viewportWidth": 1366,
+        "hasHorizontalOverflow": false
+      }
+    }
+  ]
+}

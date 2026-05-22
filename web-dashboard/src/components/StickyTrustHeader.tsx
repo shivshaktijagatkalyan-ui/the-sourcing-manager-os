@@ -18,7 +18,7 @@ const StickyTrustHeader: React.FC = () => {
           <p className="text-sm text-zinc-400">JSN Enterprise • Mira Road</p>
         </div>
 
-        <div className="flex justify-center gap-4 text-sm">
+        <div className="flex flex-wrap justify-center gap-2 text-sm">
           <div className="flex items-center gap-1 bg-green-500/10 text-green-400 px-3 py-1 rounded-full border border-green-500/20">
             <Shield className="w-4 h-4" />
             Verified Active Broker

@@ -56,6 +56,7 @@ class TrainingRuntime extends ChangeNotifier {
       'area': 'Mira Road',
       'city': 'Mumbai',
       'speciality': 'Mira Road buyers / Panvel project buyers',
+      'rera_number': '',
       'category': 'hot',
       'verified_status': 'verified_active',
       'verified_performance_rank': 'Silver',
@@ -130,6 +131,8 @@ class TrainingRuntime extends ChangeNotifier {
         'brokerage_status': 'tracking',
         'data_quality_score': 64,
         'last_call_outcome': null,
+        'call_priority': 'normal',
+        'callback_at': null,
         'created_at': now.subtract(const Duration(hours: 5)).toIso8601String(),
         'updated_at': now.subtract(const Duration(hours: 5)).toIso8601String(),
       },
@@ -161,6 +164,8 @@ class TrainingRuntime extends ChangeNotifier {
         'brokerage_status': 'tracking',
         'data_quality_score': 86,
         'last_call_outcome': null,
+        'call_priority': 'high',
+        'callback_at': now.add(const Duration(minutes: 30)).toIso8601String(),
         'created_at': now.subtract(const Duration(days: 1)).toIso8601String(),
         'updated_at': now.subtract(const Duration(days: 1)).toIso8601String(),
       },
@@ -267,7 +272,7 @@ class TrainingRuntime extends ChangeNotifier {
 
     _auditEvents.add({
       'id': 'audit_call_${DateTime.now().microsecondsSinceEpoch}',
-      'actor_id': sourcingManagerId,
+      'actor_id': type == 'lead' ? brokerUserId : sourcingManagerId,
       'lead_id': type == 'lead' ? targetId : null,
       'event_type': 'secure_call_initiated',
       'event_context': {
@@ -277,7 +282,21 @@ class TrainingRuntime extends ChangeNotifier {
       },
       'created_at': DateTime.now().toIso8601String(),
     });
+    if (type == 'lead') {
+      _callAttempts.add({
+        'id': 'call_${DateTime.now().microsecondsSinceEpoch}',
+        'lead_id': targetId,
+        'caller_id': brokerUserId,
+        'call_status': 'queued',
+        'outcome': null,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      final lead = _leadById(targetId);
+      lead?['updated_at'] = DateTime.now().toIso8601String();
+    }
 
+    _persist();
+    notifyListeners();
     return {'ok': true, 'status': 'queued'};
   }
 
@@ -668,9 +687,29 @@ class TrainingRuntime extends ChangeNotifier {
       'city': _broker['city'],
       'speciality': _broker['speciality'],
       'verified_status': _broker['verified_status'],
+      'rera_number': _broker['rera_number'] ?? '',
       'rank': _broker['verified_performance_rank'] ??
           _rankFor(_broker['trust_score']),
     };
+  }
+
+  void updateBrokerProfile({
+    required String brokerName,
+    required String companyName,
+    required String area,
+    required String city,
+    required String speciality,
+    required String reraNumber,
+  }) {
+    _broker['broker_name'] = brokerName;
+    _broker['broker_alias'] = brokerName;
+    _broker['company_name'] = companyName;
+    _broker['area'] = area;
+    _broker['city'] = city;
+    _broker['speciality'] = speciality;
+    _broker['rera_number'] = reraNumber;
+    _persist();
+    notifyListeners();
   }
 
   Map<String, dynamic> brokerDashboardStats() {
@@ -684,8 +723,8 @@ class TrainingRuntime extends ChangeNotifier {
         .toList();
     final dueCutoff = DateTime.now().add(const Duration(days: 1));
     return {
-      'connected_sm_count': 1,
-      'live_projects_count': 1,
+      'connected_sm_count': brokerConnectedManagers().length,
+      'live_projects_count': brokerLiveProjects().length,
       'total_leads': brokerLeads.length,
       'hot_leads': brokerLeads
           .where((row) =>
@@ -741,8 +780,50 @@ class TrainingRuntime extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> brokerConnectedManagers() {
+    // FIX: include 'id' so SM picker can filter and assign correctly
     return [
       {
+        'id': 'sm_praveen',
+        'name': 'Praveen Singh',
+        'project': 'Sheth Avalon, Thane',
+        'status': 'Active',
+        'leads_shared': 4,
+        'visits_generated': 2,
+      },
+      {
+        'id': 'sm_jayesh',
+        'name': 'Jayesh Bhatija',
+        'project': 'Poddar Evergreens, Ulhasnagar',
+        'status': 'Active',
+        'leads_shared': 3,
+        'visits_generated': 1,
+      },
+      {
+        'id': 'sm_raju',
+        'name': 'Raju Shinde',
+        'project': 'Kanakia Silicon Valley, Powai',
+        'status': 'Active',
+        'leads_shared': 5,
+        'visits_generated': 3,
+      },
+      {
+        'id': 'sm_mohan',
+        'name': 'Mohan Gupta',
+        'project': 'Raj Shiv Ganga, Borivali',
+        'status': 'Active',
+        'leads_shared': 2,
+        'visits_generated': 0,
+      },
+      {
+        'id': 'sm_amit',
+        'name': 'Amit Patel',
+        'project': 'Lodha Palava, Dombivli',
+        'status': 'Active',
+        'leads_shared': 6,
+        'visits_generated': 4,
+      },
+      {
+        'id': sourcingManagerId,
         'name': 'Vinod Gupta',
         'project': 'The Wadhwa Wise City, Panvel',
         'status': 'Active',
@@ -752,9 +833,59 @@ class TrainingRuntime extends ChangeNotifier {
     ];
   }
 
+  /// Alias used by BrokerDashboardScreen — delegates to brokerReviewSiteVisit.
+  Future<bool> reviewSiteVisit(String visitId, String action) =>
+      brokerReviewSiteVisit(visitId, action);
+
   List<Map<String, dynamic>> brokerLiveProjects() {
     return [
       {
+        'id': 'ec000000-0000-0000-0000-000000000001',
+        'title': 'Sheth Avalon',
+        'location': 'Thane West, Thane',
+        'status': 'Active',
+        'stage': 'Active Broker',
+        'leads_given': 4,
+        'verified_visits': 2,
+      },
+      {
+        'id': 'ec000000-0000-0000-0000-000000000002',
+        'title': 'Poddar Evergreens',
+        'location': 'Ulhasnagar East, Ulhasnagar',
+        'status': 'Active',
+        'stage': 'Active Broker',
+        'leads_given': 3,
+        'verified_visits': 1,
+      },
+      {
+        'id': 'ec000000-0000-0000-0000-000000000003',
+        'title': 'Kanakia Silicon Valley',
+        'location': 'Powai, Mumbai',
+        'status': 'Active',
+        'stage': 'Active Broker',
+        'leads_given': 5,
+        'verified_visits': 3,
+      },
+      {
+        'id': 'ec000000-0000-0000-0000-000000000004',
+        'title': 'Raj Shiv Ganga',
+        'location': 'Borivali East, Mumbai',
+        'status': 'Active',
+        'stage': 'Active Broker',
+        'leads_given': 2,
+        'verified_visits': 0,
+      },
+      {
+        'id': 'ec000000-0000-0000-0000-000000000005',
+        'title': 'Lodha Palava',
+        'location': 'Dombivli East, Dombivli',
+        'status': 'Active',
+        'stage': 'Active Broker',
+        'leads_given': 6,
+        'verified_visits': 4,
+      },
+      {
+        'id': _project['id'],
         'title': _project['project_name'],
         'location': '${_project['area']}, ${_project['city']}',
         'status': 'Active',
@@ -788,6 +919,7 @@ class TrainingRuntime extends ChangeNotifier {
             _callerName('${lead['assigned_caller_id']}') ?? 'Vinod SM',
         'project': lead['property_name'] ?? _project['project_name'],
         'loan': _humanLoanStatus(loan?['status']),
+        'loan_id': loan?['id'],
         'call_status':
             (lead['last_call_outcome'] ?? lead['lead_status'] ?? 'pending')
                 .toString()
@@ -801,6 +933,8 @@ class TrainingRuntime extends ChangeNotifier {
         'brokerage_status': lead['brokerage_status'] ?? 'tracking',
         'data_quality': _dataQualityLabel(lead['data_quality_score']),
         'conversion_stage': lead['conversion_stage'] ?? lead['lead_status'],
+        'project_id': lead['project_id'],
+        'updated_at': lead['updated_at'],
       };
     }).toList();
   }
@@ -872,10 +1006,20 @@ class TrainingRuntime extends ChangeNotifier {
     required String alias,
     required String area,
     required String city,
+    String? propertyName,
     required num? budgetMin,
     required num? budgetMax,
     String notesSafe = '',
   }) {
+    // 0. Mock Duplicate Detection
+    final existing = _leads.firstWhere(
+      (l) => l['alias'] == alias && l['organization_id'] == organizationId,
+      orElse: () => <String, dynamic>{},
+    );
+    if (existing.isNotEmpty) {
+      throw Exception('duplicate_lead_detected');
+    }
+
     final id = 'lead_${DateTime.now().microsecondsSinceEpoch}';
     _leads.add({
       'id': id,
@@ -886,7 +1030,9 @@ class TrainingRuntime extends ChangeNotifier {
       'assigned_manager_id': sourcingManagerId,
       'assigned_caller_id': null,
       'project_id': projectId,
-      'property_name': _project['project_name'],
+      'property_name': propertyName == null || propertyName.trim().isEmpty
+          ? _project['project_name']
+          : propertyName.trim(),
       'alias': alias,
       'lead_alias': alias,
       'area': area,
@@ -995,6 +1141,43 @@ class TrainingRuntime extends ChangeNotifier {
         'organization_id': organizationId,
         'caller_id': callerId,
       },
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    _persist();
+    notifyListeners();
+    return true;
+  }
+
+  bool assignLeadToSourcingManager(String leadId, {String? managerId}) {
+    final lead = _leadById(leadId);
+    if (lead == null) return false;
+
+    final assignedManagerId = managerId == null || managerId.trim().isEmpty
+        ? sourcingManagerId
+        : managerId.trim();
+    lead['assigned_sourcing_manager_id'] = assignedManagerId;
+    lead['assigned_manager_id'] = assignedManagerId;
+    lead['conversion_stage'] = 'assigned_to_sm';
+    lead['updated_at'] = DateTime.now().toIso8601String();
+
+    _brokerActivityLogs.add({
+      'id': 'activity_assign_sm_${DateTime.now().microsecondsSinceEpoch}',
+      'organization_id': organizationId,
+      'broker_id': lead['source_broker_id'],
+      'project_id': lead['project_id'],
+      'actor_id': brokerUserId,
+      'activity_type': 'lead_assigned_to_sm',
+      'notes_safe': 'Lead assigned to sourcing manager.',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    _auditEvents.add({
+      'id': 'audit_assign_sm_${DateTime.now().microsecondsSinceEpoch}',
+      'actor_id': brokerUserId,
+      'lead_id': leadId,
+      'event_type': 'lead_assigned_to_sm',
+      'event_context': {'manager_id': assignedManagerId},
       'created_at': DateTime.now().toIso8601String(),
     });
 
@@ -1515,6 +1698,7 @@ class TrainingRuntime extends ChangeNotifier {
     final lead = _leadById(leadId);
     if (lead == null) return false;
     lead['next_followup_at'] = dueAt.toIso8601String();
+    lead['conversion_stage'] = 'call_later';
     lead['updated_at'] = DateTime.now().toIso8601String();
     _brokerActivityLogs.add({
       'id': 'activity_followup_${DateTime.now().microsecondsSinceEpoch}',
@@ -1532,19 +1716,126 @@ class TrainingRuntime extends ChangeNotifier {
     return true;
   }
 
-  bool updateDataLoanStatus(String leadId, String action) {
-    final loan = _loanForLead(leadId);
+  bool updateBrokerLeadBookingStage(String leadId, String bookingStage) {
+    final lead = _leadById(leadId);
+    if (lead == null || bookingStage.trim().isEmpty) return false;
+
+    lead['booking_stage'] = bookingStage.trim();
+    lead['updated_at'] = DateTime.now().toIso8601String();
+    _brokerActivityLogs.add({
+      'id': 'activity_booking_${DateTime.now().microsecondsSinceEpoch}',
+      'organization_id': organizationId,
+      'broker_id': lead['source_broker_id'],
+      'project_id': lead['project_id'],
+      'actor_id': brokerUserId,
+      'activity_type': 'booking_stage_updated',
+      'notes_safe': 'Booking stage updated safely.',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    _auditEvents.add({
+      'id': 'audit_booking_${DateTime.now().microsecondsSinceEpoch}',
+      'actor_id': brokerUserId,
+      'lead_id': leadId,
+      'event_type': 'booking_stage_updated',
+      'event_context': {'booking_stage': bookingStage.trim()},
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    _persist();
+    notifyListeners();
+    return true;
+  }
+
+  bool updateBrokerLeadBrokerageStatus(String leadId, String brokerageStatus) {
+    final lead = _leadById(leadId);
+    if (lead == null || brokerageStatus.trim().isEmpty) return false;
+
+    lead['brokerage_status'] = brokerageStatus.trim();
+    lead['updated_at'] = DateTime.now().toIso8601String();
+    _brokerActivityLogs.add({
+      'id': 'activity_brokerage_${DateTime.now().microsecondsSinceEpoch}',
+      'organization_id': organizationId,
+      'broker_id': lead['source_broker_id'],
+      'project_id': lead['project_id'],
+      'actor_id': brokerUserId,
+      'activity_type': 'brokerage_status_updated',
+      'notes_safe': 'Brokerage status updated safely.',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    _auditEvents.add({
+      'id': 'audit_brokerage_${DateTime.now().microsecondsSinceEpoch}',
+      'actor_id': brokerUserId,
+      'lead_id': leadId,
+      'event_type': 'brokerage_status_updated',
+      'event_context': {'brokerage_status': brokerageStatus.trim()},
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    _persist();
+    notifyListeners();
+    return true;
+  }
+
+  bool updateDataLoanStatus(
+    String leadId,
+    String action, {
+    String? grantedToUserId,
+    int durationHours = 24,
+  }) {
+    final lead = _leadById(leadId);
+    if (lead == null) return false;
+
+    var loan = _loanForLead(leadId);
+    if (loan == null && action == 'grant_access') {
+      loan = {
+        'id': 'loan_${DateTime.now().microsecondsSinceEpoch}',
+        'lead_id': leadId,
+        'broker_id': brokerUserId,
+        'granted_to_user_id': grantedToUserId?.isNotEmpty == true
+            ? grantedToUserId
+            : callerRahulId,
+        'purpose': 'call',
+        'status': 'active',
+        'starts_at': DateTime.now().toIso8601String(),
+        'expires_at': DateTime.now()
+            .add(Duration(hours: durationHours <= 0 ? 24 : durationHours))
+            .toIso8601String(),
+      };
+      _dataLoans.add(loan);
+    }
     if (loan == null) return false;
+
     if (action == 'revoke_access') {
       loan['status'] = 'revoked';
       loan['revoked_at'] = DateTime.now().toIso8601String();
     } else if (action == 'extend_access') {
       loan['status'] = 'active';
-      loan['expires_at'] =
-          DateTime.now().add(const Duration(hours: 24)).toIso8601String();
+      loan['expires_at'] = DateTime.now()
+          .add(Duration(hours: durationHours <= 0 ? 24 : durationHours))
+          .toIso8601String();
     } else if (action == 'grant_access') {
       loan['status'] = 'active';
+      loan['granted_to_user_id'] = grantedToUserId?.isNotEmpty == true
+          ? grantedToUserId
+          : loan['granted_to_user_id'];
+      loan['expires_at'] = DateTime.now()
+          .add(Duration(hours: durationHours <= 0 ? 24 : durationHours))
+          .toIso8601String();
     }
+
+    lead['lead_status'] = action == 'revoke_access' ? 'new' : 'loan_active';
+    lead['conversion_stage'] =
+        action == 'revoke_access' ? 'lead_received' : 'assigned_to_caller';
+    lead['updated_at'] = DateTime.now().toIso8601String();
+    _brokerActivityLogs.add({
+      'id': 'activity_access_${DateTime.now().microsecondsSinceEpoch}',
+      'organization_id': organizationId,
+      'broker_id': lead['source_broker_id'],
+      'project_id': lead['project_id'],
+      'actor_id': brokerUserId,
+      'activity_type': 'data_access_updated',
+      'notes_safe': 'Call access updated: $action.',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
     _persist();
     notifyListeners();
     return true;
@@ -1554,6 +1845,7 @@ class TrainingRuntime extends ChangeNotifier {
     final lead = _leadById(leadId);
     if (lead == null) return false;
     lead['brokerage_status'] = 'disputed';
+    lead['updated_at'] = DateTime.now().toIso8601String();
     _brokerActivityLogs.add({
       'id': 'activity_issue_${DateTime.now().microsecondsSinceEpoch}',
       'organization_id': organizationId,

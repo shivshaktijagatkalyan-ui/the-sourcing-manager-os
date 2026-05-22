@@ -1,11 +1,12 @@
 // @ts-ignore: Deno import
 import { serve } from 'std/http/server.ts'
-import { adminClient, currentUser, requirePermission, safeJson, recordAudit, corsHeaders } from '../_shared/sprint7.ts'
+import { adminClient, currentUser, requirePermission, safeJson, recordAudit, corsHeaders, validUuid } from '../_shared/sprint7.ts'
 
 
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST') return safeJson({ ok: false, reason: 'invalid_method' }, 405)
 
   try {
     const user = await currentUser(req)
@@ -29,12 +30,15 @@ serve(async (req: Request): Promise<Response> => {
     if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
 
     const { lead_id, project_id, scheduled_at } = await req.json()
+    const leadId = validUuid(lead_id)
+    const projectId = validUuid(project_id)
+    if (!leadId || !projectId) return safeJson({ ok: false, reason: 'invalid_input' }, 400)
 
     // 3. Validate Ownership & Active Loan
     const { data: lead, error: leadError } = await admin
       .from('leads_public')
       .select('broker_id, organization_id')
-      .eq('id', lead_id)
+      .eq('id', leadId)
       .single()
 
     if (leadError || !lead || lead.organization_id !== pilot.org_id) {
@@ -42,7 +46,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const { data: hasLoan } = await admin.rpc('has_active_data_loan', {
-      p_lead_id: lead_id,
+      p_lead_id: leadId,
       p_user_id: user.id,
       p_purpose: 'site_visit'
     })
@@ -53,10 +57,11 @@ serve(async (req: Request): Promise<Response> => {
     const { data: visit, error: visitError } = await admin
       .from('site_visits')
       .insert({
-        lead_id,
+        lead_id: leadId,
+        organization_id: pilot.org_id,
         broker_id: lead.broker_id,
         sourcing_manager_id: user.id,
-        project_id,
+        project_id: projectId,
         status: 'scheduled',
         scheduled_at: scheduled_at || new Date().toISOString()
       })
@@ -68,8 +73,8 @@ serve(async (req: Request): Promise<Response> => {
     // 5. Audit
     await recordAudit(admin, user.id, pilot.org_id, null, 'site_visit_created', {
       site_visit_id: visit.id,
-      lead_id,
-      project_id
+      lead_id: leadId,
+      project_id: projectId
     })
 
     return safeJson({ ok: true, visit_id: visit.id })

@@ -1,11 +1,18 @@
 // @ts-ignore: Deno import
 import { serve } from 'std/http/server.ts'
-import { adminClient, currentUser, requirePermission, safeJson, corsHeaders } from '../_shared/sprint7.ts'
+import { adminClient, currentUser, requirePermission, safeJson, corsHeaders, validUuid } from '../_shared/sprint7.ts'
 
 declare const Deno: any;
 
+const reviewableStatuses = new Set([
+  'broker_review_pending',
+  'photo_verified',
+  'visit_done',
+  'completed',
+])
+
 serve(async (req: Request): Promise<Response> => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return safeJson({ ok: false, reason: 'invalid_method' }, 405)
 
   try {
@@ -30,6 +37,8 @@ serve(async (req: Request): Promise<Response> => {
     if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
 
     const { site_visit_id, action, reason } = await req.json()
+    const siteVisitId = validUuid(site_visit_id)
+    if (!siteVisitId) return safeJson({ ok: false, reason: 'invalid_site_visit' }, 400)
 
     if (!['approve', 'reject'].includes(action)) {
       return safeJson({ ok: false, reason: 'invalid_input' }, 400)
@@ -38,18 +47,18 @@ serve(async (req: Request): Promise<Response> => {
     // 3. Fetch Visit
     const { data: visit, error: fetchError } = await admin
       .from('site_visits')
-      .select('id, broker_id, status')
-      .eq('id', site_visit_id)
-      .eq('broker_id', user.id)
-      .single()
+      .select('id, organization_id, status')
+      .eq('id', siteVisitId)
+      .eq('organization_id', pilot.org_id)
+      .maybeSingle()
 
-    if (fetchError || !visit || visit.status !== 'photo_verified') {
+    if (fetchError || !visit || !reviewableStatuses.has(visit.status)) {
       return safeJson({ ok: false, reason: 'invalid_state' }, 409)
     }
 
     // 4. Atomic Secure Update
     const { data: result, error: updateError } = await admin.rpc('broker_review_site_visit_v2', {
-        p_visit_id: site_visit_id,
+        p_visit_id: siteVisitId,
         p_actor_id: user.id,
         p_action: action,
         p_reason: reason

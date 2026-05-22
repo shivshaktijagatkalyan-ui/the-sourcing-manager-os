@@ -1,0 +1,197 @@
+name: Docker Build & Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'web-dashboard/**'
+      - 'flutter_app/**'
+      - 'docker-compose.yml'
+      - 'Dockerfile'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    strategy:
+      matrix:
+        service: [web-dashboard, flutter-app]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for ${{ matrix.service }}
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=${{ matrix.service }}-
+            type=raw,value=${{ matrix.service }}-latest,enable={{is_default_branch}}
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Docker Scout vulnerability scan
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.service }}-${{ github.sha }}
+          sarif-file: scout-${{ matrix.service }}-results.sarif
+          summary: true
+
+      - name: Upload Scout SARIF reports
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: scout-${{ matrix.service }}-results.sarif
+          category: docker-scout-${{ matrix.service }}
+
+      - name: Comment on PR with vulnerability summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const scout = JSON.parse(fs.readFileSync('scout-${{ matrix.service }}-results.sarif', 'utf8'));
+            
+            let summary = '### Docker Scout Scan Results - ${{ matrix.service }}\n\n';
+            const vulnerabilities = scout.runs[0].results || [];
+            
+            if (vulnerabilities.length === 0) {
+              summary += '✅ No vulnerabilities found!\n';
+            } else {
+              const bySeverity = {};
+              vulnerabilities.forEach(v => {
+                const level = v.level || 'note';
+                bySeverity[level] = (bySeverity[level] || 0) + 1;
+              });
+              
+              summary += '| Severity | Count |\n|----------|-------|\n';
+              Object.entries(bySeverity).forEach(([level, count]) => {
+                summary += `| ${level.toUpperCase()} | ${count} |\n`;
+              });
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+  security-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy SARIF report
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: 'trivy-fs'
+
+  docker-compose-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install docker-compose-lint
+        run: pip install docker-compose-lint
+
+      - name: Lint docker-compose.yml
+        run: docker-compose-lint docker-compose.yml
+
+      - name: Lint docker-compose.prod.yml
+        run: docker-compose-lint docker-compose.prod.yml
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test docker-compose configuration
+        run: |
+          docker compose config > /dev/null
+          docker compose --file docker-compose.yml --file docker-compose.prod.yml config > /dev/null
+
+      - name: Run service health checks
+        timeout-minutes: 5
+        run: |
+          docker compose up -d
+          sleep 10
+          docker compose ps
+          docker compose ps --filter status=running | grep -q sourcing-manager-web
+          docker compose ps --filter status=running | grep -q sourcing-manager-flutter
+          docker compose ps --filter status=running | grep -q sourcing-manager-proxy
+          docker compose down

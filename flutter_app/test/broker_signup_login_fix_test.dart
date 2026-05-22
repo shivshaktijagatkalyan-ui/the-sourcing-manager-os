@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sourcing_manager_os/app_config.dart';
 import 'package:sourcing_manager_os/screens/choose_role_screen.dart';
 import 'package:sourcing_manager_os/screens/login_screen.dart';
+import 'package:sourcing_manager_os/utils/auth_service.dart';
 import 'package:sourcing_manager_os/utils/role_resolver.dart';
 
 void main() {
@@ -53,6 +54,63 @@ void main() {
     final role = await RoleResolver.currentRole(isSupabaseConfigured: true);
 
     expect(role, 'sourcing_manager');
+  });
+
+  test('training broker credential resolves broker dashboard role', () {
+    AppConfig.isTrainingMode = true;
+    AppConfig.mockRole = 'sourcing_manager';
+
+    final role = RoleResolver.roleForTrainingLoginEmail(
+      'jitu.broker.uat@sourcing-manager-os.test',
+    );
+
+    expect(role, 'broker_owner');
+  });
+
+  test(
+      'web Google OAuth redirect returns to localhost root without training query',
+      () {
+    final redirect = AuthService.webOAuthRedirectUrl(
+      base: Uri.parse(
+        'http://127.0.0.1:5055/?training=true&mockRole=broker_owner',
+      ),
+    );
+
+    expect(redirect, 'http://127.0.0.1:5055/');
+  });
+
+  testWidgets('training broker login sets broker owner before refresh',
+      (tester) async {
+    AppConfig.isTrainingMode = true;
+    AppConfig.mockRole = 'sourcing_manager';
+    var refreshed = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(
+          onAuthStateChanged: () {
+            refreshed = true;
+          },
+        ),
+      ),
+    );
+
+    final fields = find.byType(TextField);
+    expect(fields, findsNWidgets(2));
+    await tester.enterText(
+      fields.at(0),
+      'jitu.broker.uat@sourcing-manager-os.test',
+    );
+    await tester.enterText(
+      fields.at(1),
+      'PilotTest@2026!Secure',
+    );
+    await tester.tap(find.text('Sign In'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(AppConfig.mockRole, 'broker_owner');
+    expect(refreshed, true);
   });
 
   test('broker signup sends selected_role and safe broker metadata', () {

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, MapPin, Clock, Send } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 
 interface ProposeSiteVisitSheetProps {
   isOpen: boolean;
@@ -54,6 +54,7 @@ const ProposeSiteVisitSheet: React.FC<ProposeSiteVisitSheetProps> = ({
                 <h3 className="text-lg font-bold text-white">Propose Site Visit</h3>
                 <button
                   onClick={onClose}
+                  aria-label="Close site visit proposal"
                   className="p-2 rounded-full hover:bg-white/5 transition-colors"
                 >
                   <X className="w-5 h-5 text-zinc-400" />
@@ -73,6 +74,7 @@ const ProposeSiteVisitSheet: React.FC<ProposeSiteVisitSheetProps> = ({
                   <select
                     value={selectedProject}
                     onChange={(e) => setSelectedProject(e.target.value)}
+                    aria-label="Select project for site visit"
                     className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
                   >
                     <option value="">Choose a project...</option>
@@ -93,6 +95,7 @@ const ProposeSiteVisitSheet: React.FC<ProposeSiteVisitSheetProps> = ({
                     type="date"
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
+                    aria-label="Preferred site visit date"
                     className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
                     min={new Date().toISOString().split('T')[0]}
                   />
@@ -106,6 +109,7 @@ const ProposeSiteVisitSheet: React.FC<ProposeSiteVisitSheetProps> = ({
                   <select
                     value={selectedTime}
                     onChange={(e) => setSelectedTime(e.target.value)}
+                    aria-label="Preferred site visit time"
                     className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
                   >
                     <option value="">Choose time...</option>
@@ -127,6 +131,7 @@ const ProposeSiteVisitSheet: React.FC<ProposeSiteVisitSheetProps> = ({
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
+                    aria-label="Site visit notes"
                     placeholder="Any special requirements or notes..."
                     className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-orange-500 focus:outline-none resize-none"
                     rows={3}
@@ -140,6 +145,7 @@ const ProposeSiteVisitSheet: React.FC<ProposeSiteVisitSheetProps> = ({
                     ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-black'
                     : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
                 }`}
+                aria-label={`Send site visit proposal for lead ${leadAlias}`}
                 disabled={!selectedProject || !selectedDate || !selectedTime}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleSubmit}

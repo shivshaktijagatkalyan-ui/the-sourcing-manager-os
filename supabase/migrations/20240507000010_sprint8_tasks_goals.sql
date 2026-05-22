@@ -68,6 +68,6 @@ CREATE TRIGGER on_sourcing_tasks_updated
 -- 6. Initial Goal for Vinod Gupta (Optional, but helps with "Live" feel)
 -- User ID: da81bcf6-2698-4c2c-b8ca-781df9657dc8
 -- Org ID: c3802225-8f55-496b-afed-571e09f49eeb
-INSERT INTO public.sourcing_goals (user_id, org_id, target_leads, target_visits, target_broker_activations, month_year)
-VALUES ('da81bcf6-2698-4c2c-b8ca-781df9657dc8', 'c3802225-8f55-496b-afed-571e09f49eeb', 50, 20, 10, DATE_TRUNC('month', CURRENT_DATE)::DATE)
-ON CONFLICT (user_id, month_year) DO NOTHING;
+-- INSERT INTO public.sourcing_goals (user_id, org_id, target_leads, target_visits, target_broker_activations, month_year)
+-- VALUES ('da81bcf6-2698-4c2c-b8ca-781df9657dc8', 'c3802225-8f55-496b-afed-571e09f49eeb', 50, 20, 10, DATE_TRUNC('month', CURRENT_DATE)::DATE)
+-- ON CONFLICT (user_id, month_year) DO NOTHING;

@@ -10,6 +10,12 @@ import {
 } from "../_shared/sprint7.ts"
 
 const actions = new Set(["grant_access", "revoke_access", "extend_access"])
+const purposes = new Set(["call", "site_visit"])
+
+function safePurpose(value: unknown) {
+  const purpose = typeof value === "string" ? value : "call"
+  return purposes.has(purpose) ? purpose : null
+}
 
 async function actorContext(admin: ReturnType<typeof adminClient>, userId: string) {
   const { data } = await admin
@@ -65,6 +71,8 @@ serve(async (req: Request) => {
 
     const leadId = validUuid(body.lead_id)
     if (!leadId) return safeJson({ ok: false, reason: "invalid_lead" }, 400)
+    const purpose = safePurpose(body.purpose)
+    if (!purpose) return safeJson({ ok: false, reason: "invalid_purpose" }, 400)
 
     const lead = await leadAccess(admin, user.id, context.orgId, leadId)
     if (!lead) return safeJson({ ok: false, reason: "forbidden" }, 403)
@@ -87,7 +95,7 @@ serve(async (req: Request) => {
         .from("data_loans")
         .update({ status: "revoked", revoked_at: new Date().toISOString(), revoked_by: user.id })
         .eq("lead_id", leadId)
-        .eq("purpose", "call")
+        .eq("purpose", purpose)
         .eq("status", "active")
 
       const startsAt = new Date()
@@ -96,7 +104,7 @@ serve(async (req: Request) => {
         lead_id: leadId,
         broker_id: lead.broker_id,
         granted_to_user_id: granteeId,
-        purpose: "call",
+        purpose: purpose,
         status: "active",
         starts_at: startsAt.toISOString(),
         expires_at: expiresAt.toISOString(),
@@ -104,29 +112,37 @@ serve(async (req: Request) => {
 
       if (error) return safeJson({ ok: false, reason: "write_failed" }, 409)
 
-      await admin
-        .from("leads_public")
-        .update({
-          assigned_caller_id: granteeId,
-          conversion_stage: "assigned_to_caller",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", leadId)
-        .eq("organization_id", context.orgId)
+      if (purpose === "call") {
+        await admin
+          .from("leads_public")
+          .update({
+            assigned_caller_id: granteeId,
+            conversion_stage: "assigned_to_caller",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", leadId)
+          .eq("organization_id", context.orgId)
+      }
 
-      await recordAudit(admin, user.id, context.orgId, leadId, "data_loan_granted", { grantee_id: granteeId })
+      await recordAudit(admin, user.id, context.orgId, leadId, "data_loan_granted", { grantee_id: granteeId, purpose })
       return safeJson({ ok: true, status: "updated" })
     }
 
-    const { data: loan } = await admin
+    const requestedLoanId = validUuid(body.loan_id)
+    let loanQuery = admin
       .from("data_loans")
       .select("id, expires_at")
       .eq("lead_id", leadId)
-      .eq("purpose", "call")
+      .eq("purpose", purpose)
       .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+
+    if (requestedLoanId) {
+      loanQuery = loanQuery.eq("id", requestedLoanId)
+    } else {
+      loanQuery = loanQuery.order("created_at", { ascending: false }).limit(1)
+    }
+
+    const { data: loan } = await loanQuery.maybeSingle()
 
     if (!loan) return safeJson({ ok: false, reason: "active_access_not_found" }, 404)
 
@@ -137,7 +153,7 @@ serve(async (req: Request) => {
         .eq("id", loan.id)
 
       if (error) return safeJson({ ok: false, reason: "write_failed" }, 409)
-      await recordAudit(admin, user.id, context.orgId, leadId, "data_loan_revoked", {})
+      await recordAudit(admin, user.id, context.orgId, leadId, "data_loan_revoked", { purpose, loan_id: loan.id })
       return safeJson({ ok: true, status: "updated" })
     }
 
@@ -152,7 +168,7 @@ serve(async (req: Request) => {
         .eq("id", loan.id)
 
       if (error) return safeJson({ ok: false, reason: "write_failed" }, 409)
-      await recordAudit(admin, user.id, context.orgId, leadId, "data_loan_extended", {})
+      await recordAudit(admin, user.id, context.orgId, leadId, "data_loan_extended", { purpose, loan_id: loan.id })
       return safeJson({ ok: true, status: "updated" })
     }
 

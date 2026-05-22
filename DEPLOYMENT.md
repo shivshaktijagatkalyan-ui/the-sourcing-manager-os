@@ -29,7 +29,7 @@ If the gate reports a missing tool, deployment stops safely. Do not bypass the g
 supabase login
 ```
 
-3. Link the project:
+1. Link the project:
 
 ```powershell
 supabase link --project-ref your-project-ref

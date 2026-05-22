@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../app_config.dart';
 import '../utils/premium_ui.dart';
 import '../utils/training_runtime.dart';
@@ -8,8 +9,11 @@ class AddLeadFromBrokerScreen extends StatefulWidget {
   final String? sourceBrokerId;
   final String? sourceBrokerAlias;
 
-  const AddLeadFromBrokerScreen(
-      {super.key, this.sourceBrokerId, this.sourceBrokerAlias});
+  const AddLeadFromBrokerScreen({
+    super.key,
+    this.sourceBrokerId,
+    this.sourceBrokerAlias,
+  });
 
   @override
   State<AddLeadFromBrokerScreen> createState() =>
@@ -31,6 +35,7 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
   String? _selectedBrokerAlias;
   List<Map<String, dynamic>> _brokers = [];
   bool _isSubmitting = false;
+  final _uuid = const Uuid();
 
   @override
   void initState() {
@@ -44,7 +49,7 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
 
   Future<void> _fetchBrokers() async {
     try {
-      if (AppConfig.isSupabaseConfigured) {
+      if (AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
         final data = await Supabase.instance.client
             .from('brokers_public')
             .select('id, broker_alias')
@@ -56,9 +61,7 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
               .brokersForOrganization(TrainingRuntime.organizationId);
         });
       }
-    } catch (_) {
-      // Ignore
-    }
+    } catch (_) {}
   }
 
   Future<void> _submit() async {
@@ -71,10 +74,13 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
 
     setState(() => _isSubmitting = true);
     final phone = _phoneController.text.trim();
-    _phoneController.clear(); // Constitution wipe
+    _phoneController.clear(); // Constitution PII Wipe
+
+    // Idempotency key for field resilience
+    final idempotencyKey = _uuid.v4();
 
     try {
-      if (AppConfig.isSupabaseConfigured) {
+      if (AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
         final client = Supabase.instance.client;
         final pilot = await client
             .from('pilot_users')
@@ -85,6 +91,7 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
         final response =
             await client.functions.invoke('lead-from-broker', body: {
           'action': 'create_lead_from_broker',
+          'idempotency_key': idempotencyKey,
           'organization_id': pilot['org_id'],
           'source_broker_id': _selectedBrokerId,
           'lead_alias': _aliasController.text.trim(),
@@ -134,23 +141,56 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
   }
 
   void _showSuccess(String alias) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Lead Received'),
-        content: Text(
-            'Lead "$alias" has been secured and connected to the broker.\n\nCustomer number encrypted rahega, screen par nahi dikhega.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('OK')),
-        ],
+      backgroundColor: PremiumUI.cardColor,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle,
+                color: PremiumUI.secondary, size: 64),
+            const SizedBox(height: 24),
+            Text('LEAD SECURED', style: PremiumUI.h1),
+            const SizedBox(height: 12),
+            Text(
+              'Lead "$alias" has been successfully ingested.\n\nPII has been encrypted in the Secure Vault. It will never be displayed in plain text.',
+              textAlign: TextAlign.center,
+              style: PremiumUI.subtitle,
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: PremiumUI.secondary,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('CONTINUE',
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Error: $message')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('SECURITY ALERT: $message'),
+        backgroundColor: PremiumUI.danger,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -160,8 +200,9 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Broker Lead Intake',
-            style: PremiumUI.h1.copyWith(fontSize: 20)),
+        title: Text('SECURE INTAKE',
+            style: PremiumUI.h1.copyWith(fontSize: 16, letterSpacing: 2)),
+        centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -170,65 +211,66 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              PremiumUI.sectionShell(
-                title: 'Secure Lead Intake',
-                subtitle:
-                    'Lead metadata yahan dikhega. Number sirf encrypted vault mein jayega.',
-                accentColor: PremiumUI.secondary,
-                child: const Text(
-                  'Source broker se lead lo, alias aur budget save karo, aur customer number ko screen par kabhi mat lao.',
-                  style: TextStyle(color: PremiumUI.muted, fontSize: 12),
-                ),
-              ),
+              _buildHeader(),
+              const SizedBox(height: 32),
+              _buildBrokerSelector(),
               const SizedBox(height: 24),
-              _brokerSelector(),
-              const SizedBox(height: 24),
-              _textField(
-                  _aliasController, 'Lead Alias (e.g. L-542)', Icons.badge,
-                  validator: (v) => v!.isEmpty ? 'Alias required' : null),
-              const SizedBox(height: 12),
-              _textField(
+              _buildPremiumField(
+                  _aliasController, 'LEAD ALIAS', Icons.badge_outlined,
+                  hint: 'e.g. L-542'),
+              const SizedBox(height: 20),
+              _buildPremiumField(
                 _phoneController,
-                'Secure Contact Vault Input',
+                'CONTACT VAULT (ENCRYPTED)',
                 Icons.lock_outline,
                 keyboardType: TextInputType.phone,
-                helper: 'Encrypted at intake. Never displayed again.',
-                obscureText: true,
+                obscure: true,
+                helper:
+                    'Value is wiped from UI memory immediately after intake.',
               ),
-              const SizedBox(height: 12),
-              _textField(_areaController, 'Lead Area', Icons.map_outlined),
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
+              _buildPremiumField(_areaController, 'PREFERRED AREA',
+                  Icons.location_on_outlined),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
-                      child: _textField(_budgetMinController, 'Budget Min',
-                          Icons.currency_rupee,
+                      child: _buildPremiumField(_budgetMinController,
+                          'BUDGET MIN', Icons.remove_circle_outline,
                           keyboardType: TextInputType.number)),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 16),
                   Expanded(
-                      child: _textField(_budgetMaxController, 'Budget Max',
-                          Icons.currency_rupee,
+                      child: _buildPremiumField(_budgetMaxController,
+                          'BUDGET MAX', Icons.add_circle_outline,
                           keyboardType: TextInputType.number)),
                 ],
               ),
-              const SizedBox(height: 12),
-              _textField(
-                  _notesController, 'Internal Notes', Icons.note_alt_outlined,
+              const SizedBox(height: 20),
+              _buildPremiumField(_notesController, 'INTERNAL METADATA',
+                  Icons.note_alt_outlined,
                   maxLines: 3),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _isSubmitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: PremiumUI.secondary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+              const SizedBox(height: 48),
+              SizedBox(
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: PremiumUI.secondary,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    elevation: 8,
+                    shadowColor: PremiumUI.secondary.withValues(alpha: 0.5),
+                  ),
+                  child: _isSubmitting
+                      ? const CircularProgressIndicator(color: Colors.black)
+                      : const Text('INGEST LEAD TO VAULT',
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5)),
                 ),
-                child: _isSubmitting
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Secure Lead Intake',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
               ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -236,72 +278,190 @@ class _AddLeadFromBrokerScreenState extends State<AddLeadFromBrokerScreen> {
     );
   }
 
-  Widget _brokerSelector() {
-    if (_selectedBrokerId != null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: PremiumUI.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: PremiumUI.primary.withValues(alpha: 0.15)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.person_pin, color: PremiumUI.primary),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Text(
-                    'Source: ${_selectedBrokerAlias ?? 'Selected Broker'}',
-                    style: const TextStyle(fontWeight: FontWeight.bold))),
-            if (widget.sourceBrokerId == null)
-              TextButton(
-                  onPressed: () => setState(() => _selectedBrokerId = null),
-                  child: const Text('Change')),
-          ],
-        ),
-      );
-    }
-
-    return DropdownButtonFormField<String>(
-      decoration: const InputDecoration(
-          labelText: 'Source Broker',
-          border: OutlineInputBorder(),
-          prefixIcon: Icon(Icons.people_outline)),
-      items: _brokers
-          .map((b) => DropdownMenuItem(
-              value: b['id'].toString(), child: Text(b['broker_alias'])))
-          .toList(),
-      onChanged: (val) {
-        setState(() {
-          _selectedBrokerId = val;
-          _selectedBrokerAlias =
-              _brokers.firstWhere((b) => b['id'] == val)['broker_alias'];
-        });
-      },
+  Widget _buildHeader() {
+    return PremiumUI.glassCard(
+      color: PremiumUI.secondary,
+      opacity: 0.1,
+      child: Column(
+        children: [
+          const Icon(Icons.shield_outlined,
+              color: PremiumUI.secondary, size: 32),
+          const SizedBox(height: 16),
+          const Text('DATALESS INTAKE ENGINE',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: 1)),
+          const SizedBox(height: 8),
+          Text(
+            'In compliance with Zero-Trust Architecture. No raw PII will be stored in public-facing tables.',
+            textAlign: TextAlign.center,
+            style: PremiumUI.subtitle.copyWith(fontSize: 11),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _textField(
-      TextEditingController controller, String label, IconData icon,
-      {String? helper,
-      TextInputType? keyboardType,
-      String? Function(String?)? validator,
-      int maxLines = 1,
-      bool obscureText = false,
-      Widget? suffix}) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      validator: validator,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: helper,
-        prefixIcon: Icon(icon, size: 20),
-        suffixIcon: suffix,
-        border: const OutlineInputBorder(),
+  Widget _buildBrokerSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('SOURCE CHANNEL PARTNER',
+            style: TextStyle(
+                color: PremiumUI.primary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2)),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: widget.sourceBrokerId == null ? _showBrokerPicker : null,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.handshake_outlined,
+                    color: Colors.white38, size: 18),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    _selectedBrokerAlias ?? 'SELECT BROKER...',
+                    style: TextStyle(
+                      color: _selectedBrokerAlias == null
+                          ? Colors.white24
+                          : Colors.white,
+                      fontSize: 14,
+                      fontWeight: _selectedBrokerAlias == null
+                          ? FontWeight.normal
+                          : FontWeight.bold,
+                    ),
+                  ),
+                ),
+                if (widget.sourceBrokerId == null)
+                  const Icon(Icons.expand_more,
+                      color: Colors.white24, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showBrokerPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: PremiumUI.cardColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(2))),
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('SELECT SOURCE BROKER',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5)),
+            ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: _brokers.length,
+                itemBuilder: (context, index) {
+                  final b = _brokers[index];
+                  return ListTile(
+                    onTap: () {
+                      setState(() {
+                        _selectedBrokerId = b['id'].toString();
+                        _selectedBrokerAlias = b['broker_alias'];
+                      });
+                      Navigator.pop(context);
+                    },
+                    leading: const Icon(Icons.person_outline,
+                        color: PremiumUI.primary),
+                    title: Text(b['broker_alias'],
+                        style: const TextStyle(color: Colors.white)),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildPremiumField(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    String? hint,
+    String? helper,
+    bool obscure = false,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                color: PremiumUI.primary,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2)),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          obscureText: obscure,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: hint,
+            helperText: helper,
+            helperStyle: const TextStyle(color: Colors.white24, fontSize: 9),
+            prefixIcon: Icon(icon, color: Colors.white38, size: 18),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.05),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.white10),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: PremiumUI.primary),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: PremiumUI.danger),
+            ),
+          ),
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+      ],
     );
   }
 }

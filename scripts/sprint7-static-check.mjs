@@ -58,11 +58,11 @@ const requiredFunctions = [
 ];
 
 const requiredDocs = [
-  'SPRINT_7.md',
-  'ROLE_PERMISSION_MODEL.md',
-  'ENTERPRISE_ONBOARDING.md',
-  'ONBOARDING_RUNBOOK.md',
-  'SPRINT_7_SMOKE_TEST_RESULTS.md',
+  'docs/product/SPRINT_7.md',
+  'docs/architecture/ROLE_PERMISSION_MODEL.md',
+  'docs/product/ENTERPRISE_ONBOARDING.md',
+  'docs/runbooks/ONBOARDING_RUNBOOK.md',
+  'docs/reports/SPRINT_7_SMOKE_TEST_RESULTS.md',
 ];
 
 const violations = [];

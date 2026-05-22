@@ -11,7 +11,7 @@ class AddBrokerScreen extends StatefulWidget {
 
 class _AddBrokerScreenState extends State<AddBrokerScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // Basic Info
   final _aliasController = TextEditingController();
   final _nameController = TextEditingController();
@@ -20,15 +20,15 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
   final _cityController = TextEditingController(text: 'Mumbai');
   final _specialityController = TextEditingController();
   final _notesController = TextEditingController();
-  
+
   // Sensitive Info (Wiped after submit)
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  
+
   // Metadata
   String _category = 'new';
   String _interestLevel = 'unknown';
-  
+
   bool _isSubmitting = false;
   bool _obscureSensitive = true;
 
@@ -55,22 +55,22 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
 
     final phone = _phoneController.text.trim();
     final email = _emailController.text.trim();
-    
+
     // Wipe sensitive fields immediately from UI controllers
     _phoneController.clear();
     _emailController.clear();
 
     try {
-      if (AppConfig.isSupabaseConfigured) {
+      if (AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
         final client = Supabase.instance.client;
-        
+
         // 1. Get Org ID from Pilot Record
         final pilotResponse = await client
             .from('pilot_users')
             .select('org_id')
             .eq('user_id', client.auth.currentUser!.id)
             .maybeSingle();
-            
+
         final orgId = pilotResponse?['org_id'];
         if (orgId == null) throw Exception('No active organization found');
 
@@ -138,24 +138,32 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('The contact details were encrypted and discarded from this device.'),
+            const Text(
+                'The contact details were encrypted and discarded from this device.'),
             const SizedBox(height: 16),
             Text('Alias: $alias'),
             Text('ID: $id'),
             const SizedBox(height: 8),
-            const Text('Hinglish: Broker ka number save ho gaya hai, par screen par kabhi nahi dikhega.', 
-              style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.white70)),
+            const Text(
+                'Hinglish: Broker ka number save ho gaya hai, par screen par kabhi nahi dikhega.',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.white70)),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Great')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Great')),
         ],
       ),
     );
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $message')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Error: $message')));
   }
 
   @override
@@ -172,48 +180,69 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
               _infoCard(),
               const SizedBox(height: 24),
               _sectionHeader('Identification'),
-              _textField(_aliasController, 'Broker Alias (Required)', Icons.badge, validator: (v) => v!.isEmpty ? 'Alias required' : null),
+              _textField(
+                  _aliasController, 'Broker Alias (Required)', Icons.badge,
+                  validator: (v) => v!.isEmpty ? 'Alias required' : null),
               const SizedBox(height: 12),
-              _textField(_nameController, 'Full Name (Safe)', Icons.person_outline),
+              _textField(
+                  _nameController, 'Full Name (Safe)', Icons.person_outline),
               const SizedBox(height: 12),
-              _textField(_companyController, 'Company / Agency', Icons.business),
+              _textField(
+                  _companyController, 'Company / Agency', Icons.business),
               const SizedBox(height: 24),
               _sectionHeader('Secure Contact'),
               _textField(
-                _phoneController, 
-                'Phone Number (Protected)', 
-                Icons.lock_outline, 
-                helper: 'Will be encrypted immediately.', 
+                _phoneController,
+                'Phone Number (Protected)',
+                Icons.lock_outline,
+                helper: 'Will be encrypted immediately.',
                 keyboardType: TextInputType.phone,
                 obscureText: _obscureSensitive,
                 suffix: IconButton(
-                  icon: Icon(_obscureSensitive ? Icons.visibility_off : Icons.visibility, size: 18),
-                  onPressed: () => setState(() => _obscureSensitive = !_obscureSensitive),
+                  icon: Icon(
+                      _obscureSensitive
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                      size: 18),
+                  onPressed: () =>
+                      setState(() => _obscureSensitive = !_obscureSensitive),
                 ),
               ),
               const SizedBox(height: 12),
               _textField(
-                _emailController, 
-                'Email Address (Protected)', 
-                Icons.email_outlined, 
+                _emailController,
+                'Email Address (Protected)',
+                Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
                 obscureText: _obscureSensitive,
               ),
               const SizedBox(height: 24),
               _sectionHeader('Location & Expertise'),
-              _textField(_areaController, 'Primary Area (e.g. Panvel)', Icons.map_outlined),
+              _textField(_areaController, 'Primary Area (e.g. Panvel)',
+                  Icons.map_outlined),
               const SizedBox(height: 12),
               _textField(_cityController, 'City', Icons.location_city),
               const SizedBox(height: 12),
-              _textField(_specialityController, 'Speciality (e.g. Luxury, Resale)', Icons.star_outline),
+              _textField(_specialityController,
+                  'Speciality (e.g. Luxury, Resale)', Icons.star_outline),
               const SizedBox(height: 24),
               _sectionHeader('Classification'),
-              _dropdown('Category', _category, ['new', 'warm', 'hot', 'active', 'inactive', 'dead'], (val) => setState(() => _category = val!)),
+              _dropdown(
+                  'Category',
+                  _category,
+                  ['new', 'warm', 'hot', 'active', 'inactive', 'dead'],
+                  (val) => setState(() => _category = val!)),
               const SizedBox(height: 12),
-              _dropdown('Interest Level', _interestLevel, ['unknown', 'low', 'medium', 'high'], (val) => setState(() => _interestLevel = val!)),
+              _dropdown(
+                  'Interest Level',
+                  _interestLevel,
+                  ['unknown', 'low', 'medium', 'high'],
+                  (val) => setState(() => _interestLevel = val!)),
               const SizedBox(height: 24),
               _sectionHeader('Notes'),
-              _textField(_notesController, 'Internal Notes', Icons.note_alt_outlined, maxLines: 3),
+              _textField(
+                  _notesController, 'Internal Notes', Icons.note_alt_outlined,
+                  maxLines: 3),
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submit,
@@ -221,12 +250,17 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: const Color(0xFF6366F1),
                 ),
-                child: _isSubmitting 
-                  ? const CircularProgressIndicator(color: Colors.white) 
-                  : const Text('Add Broker Securely', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: _isSubmitting
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Add Broker Securely',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 16),
-              const Center(child: Text('Broker contact is protected. Calls happen securely.', style: TextStyle(fontSize: 12, color: Colors.white54))),
+              const Center(
+                  child: Text(
+                      'Broker contact is protected. Calls happen securely.',
+                      style: TextStyle(fontSize: 12, color: Colors.white54))),
             ],
           ),
         ),
@@ -260,11 +294,23 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
   Widget _sectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white54, letterSpacing: 1.2)),
+      child: Text(title.toUpperCase(),
+          style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: Colors.white54,
+              letterSpacing: 1.2)),
     );
   }
 
-  Widget _textField(TextEditingController controller, String label, IconData icon, {String? helper, TextInputType? keyboardType, String? Function(String?)? validator, int maxLines = 1, bool obscureText = false, Widget? suffix}) {
+  Widget _textField(
+      TextEditingController controller, String label, IconData icon,
+      {String? helper,
+      TextInputType? keyboardType,
+      String? Function(String?)? validator,
+      int maxLines = 1,
+      bool obscureText = false,
+      Widget? suffix}) {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
@@ -277,20 +323,28 @@ class _AddBrokerScreenState extends State<AddBrokerScreen> {
         prefixIcon: Icon(icon, size: 20),
         suffixIcon: suffix,
         border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
 
-  Widget _dropdown(String label, String value, List<String> items, void Function(String?)? onChanged) {
+  Widget _dropdown(String label, String value, List<String> items,
+      void Function(String?)? onChanged) {
     return DropdownButtonFormField<String>(
       initialValue: value,
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e.toUpperCase(), style: const TextStyle(fontSize: 13)))).toList(),
+      items: items
+          .map((e) => DropdownMenuItem(
+              value: e,
+              child:
+                  Text(e.toUpperCase(), style: const TextStyle(fontSize: 13))))
+          .toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }

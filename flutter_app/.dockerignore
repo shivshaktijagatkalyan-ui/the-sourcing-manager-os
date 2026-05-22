@@ -1,0 +1,8 @@
+build
+.dart_tool
+.flutter-plugins-dependencies
+.git
+.gitignore
+README.md
+.env
+.DS_Store

@@ -4,11 +4,13 @@ import '../app_config.dart';
 import '../utils/premium_ui.dart';
 import '../utils/training_runtime.dart';
 import 'activation_pipeline_board.dart';
-import 'broker_followup_queue.dart';
+import 'project_inventory_erp.dart';
 import 'add_broker_screen.dart';
 import 'add_lead_from_broker.dart';
 import 'broker_review_list.dart';
-
+import 'site_visit_verify.dart';
+import '../widgets/complete_profile_card.dart';
+import 'profile_completion_screen.dart';
 class SourcingManagerDashboard extends StatefulWidget {
   const SourcingManagerDashboard({super.key});
 
@@ -27,13 +29,14 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
   List<Map<String, dynamic>> _scheduledVisits = [];
   List<Map<String, dynamic>> _visitProposals = [];
   List<Map<String, dynamic>> _tasks = [];
+  List<Map<String, dynamic>> _lockRows = [];
   Map<String, dynamic>? _activeGoal;
   String? _orgId;
 
   @override
   void initState() {
     super.initState();
-    if (!AppConfig.isSupabaseConfigured) {
+    if (!AppConfig.isSupabaseConfigured || AppConfig.isTrainingMode) {
       _trainingRuntime.addListener(_handleTrainingUpdate);
     }
     _fetchStats();
@@ -41,7 +44,7 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
 
   @override
   void dispose() {
-    if (!AppConfig.isSupabaseConfigured) {
+    if (!AppConfig.isSupabaseConfigured || AppConfig.isTrainingMode) {
       _trainingRuntime.removeListener(_handleTrainingUpdate);
     }
     super.dispose();
@@ -56,7 +59,7 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
   Future<void> _fetchStats() async {
     setState(() => _isLoading = true);
     try {
-      if (AppConfig.isSupabaseConfigured) {
+      if (AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
         final client = Supabase.instance.client;
         final userId = client.auth.currentUser!.id;
         final today = DateTime.now();
@@ -143,6 +146,8 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
               'gps_verified',
               'qr_verified',
               'photo_uploaded',
+              'broker_review_pending',
+              'completed',
               'visit_done',
               'no_show'
             ])
@@ -170,11 +175,30 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
             .eq('user_id', userId)
             .eq('status', 'active')
             .maybeSingle();
-        final tasks = await client
-            .from('sourcing_tasks')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', ascending: false);
+        // sourcing_tasks may not exist in all remote environments — degrade gracefully
+        List<dynamic> tasks = [];
+        try {
+          tasks = await client
+              .from('sourcing_tasks')
+              .select('*')
+              .eq('user_id', userId)
+              .order('created_at', ascending: false);
+        } catch (_) {
+          // Table not yet deployed to this Supabase instance — skip silently
+        }
+
+        // broker_locks requires a valid org_id; skip if pilot row is missing
+        final orgId = pilotInfo?['org_id'] as String?;
+        List<dynamic> locks = [];
+        if (orgId != null) {
+          locks = await client
+              .from('broker_locks')
+              .select(
+                  'id, broker_id, lead_id, status, expires_at, brokerage_status, brokers_public(broker_name, company_name), leads_public(alias)')
+              .eq('organization_id', orgId)
+              .order('expires_at')
+              .limit(10);
+        }
 
         setState(() {
           _stats = {
@@ -211,7 +235,8 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
           _visitProposals = List<Map<String, dynamic>>.from(visitProposals);
           _activeGoal = goals;
           _tasks = List<Map<String, dynamic>>.from(tasks);
-          _orgId = pilotInfo?['org_id'];
+          _lockRows = List<Map<String, dynamic>>.from(locks);
+          _orgId = orgId;
           _isLoading = false;
         });
       } else {
@@ -264,38 +289,50 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
               onRefresh: _fetchStats,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildWelcomeHeader(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('TODAY\'S PRIORITIES'),
-                      const SizedBox(height: 12),
-                      _buildHinglishHelp(
-                          'Aaj ke follow-ups line mein hain. Broker ko "Secure Call" karein, number kabhi leak nahi hoga.'),
-                      const SizedBox(height: 16),
-                      _buildActionHub(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('SALES INTELLIGENCE (GOALS)'),
-                      const SizedBox(height: 12),
-                      _buildGoalTracking(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('DAILY TASKS'),
-                      const SizedBox(height: 12),
-                      _buildTaskManagement(),
-                      const SizedBox(height: 24),
-                      _buildKPIGrid(),
-                      const SizedBox(height: 32),
-                      PremiumUI.sectionShell(
-                        title: 'Today\'s Follow-up Queue',
-                        subtitle: 'Aaj ka pending broker work',
-                        accentColor: PremiumUI.warning,
-                        child: _buildFollowupQueue(),
-                      ),
-                      const SizedBox(height: 32),
-                      _buildSectionTitle('ACTIVATION PIPELINE'),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 800),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildWelcomeHeader(),
+                          const SizedBox(height: 24),
+                          CompleteProfileCard(
+                            role: 'sourcing_manager',
+                            onCompleteTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileCompletionScreen(role: 'sourcing_manager')));
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                          _buildDailyGoalProgress(),
+                          const SizedBox(height: 32),
+                          _buildSectionTitle('TODAY\'S PRIORITIES'),
+                          const SizedBox(height: 12),
+                          _buildHinglishHelp(
+                              'Aaj ke follow-ups line mein hain. Broker ko "Secure Call" karein, number kabhi leak nahi hoga.'),
+                          const SizedBox(height: 16),
+                          _buildPremiumActionHub(),
+                          const SizedBox(height: 24),
+                          _buildSectionTitle('SALES INTELLIGENCE (GOALS)'),
+                          const SizedBox(height: 12),
+                          _buildGoalTracking(),
+                          const SizedBox(height: 24),
+                          _buildSectionTitle('DAILY TASKS'),
+                          const SizedBox(height: 12),
+                          _buildTaskManagement(),
+                          const SizedBox(height: 24),
+                          _buildKPIGrid(),
+                          const SizedBox(height: 32),
+                          PremiumUI.sectionShell(
+                            title: 'Today\'s Follow-up Queue',
+                            subtitle: 'Aaj ka pending broker work',
+                            accentColor: PremiumUI.warning,
+                            child: _buildFollowupQueue(),
+                          ),
+                          const SizedBox(height: 32),
+                          _buildSectionTitle('ACTIVATION PIPELINE'),
                       const SizedBox(height: 12),
                       _buildPipelineSummary(),
                       const SizedBox(height: 32),
@@ -325,6 +362,13 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
                         child: _buildSiteVisitList(),
                       ),
                       const SizedBox(height: 32),
+                      PremiumUI.sectionShell(
+                        title: 'Broker Credit Locks',
+                        subtitle: 'Commission protection and status',
+                        accentColor: PremiumUI.secondary,
+                        child: _buildBrokerLocks(),
+                      ),
+                      const SizedBox(height: 32),
                       _buildSectionTitle('TOP PERFORMING BROKERS'),
                       const SizedBox(height: 12),
                       _buildTopBrokersTable(),
@@ -351,6 +395,8 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
                 ),
               ),
             ),
+          ),
+        ),
     );
   }
 
@@ -383,6 +429,140 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
                   style: PremiumUI.subtitle
                       .copyWith(color: Colors.white70, fontSize: 11))),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDailyGoalProgress() {
+    // Mock progress for now, would be tied to _activeGoal
+    const double progress = 0.65; // 65%
+    return PremiumUI.glassCard(
+      color: PremiumUI.primary,
+      opacity: 0.08,
+      child: Row(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              const SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 8,
+                  backgroundColor: Colors.white10,
+                  color: PremiumUI.primary,
+                ),
+              ),
+              Text('${(progress * 100).toInt()}%',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12)),
+            ],
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('DAILY PERFORMANCE TARGET',
+                    style: TextStyle(
+                        color: PremiumUI.primary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2)),
+                const SizedBox(height: 4),
+                const Text('12 / 20 Actions Completed',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('Good pace! 8 more to reach your daily bonus.',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumActionHub() {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 16,
+      mainAxisSpacing: 16,
+      childAspectRatio: 2.2,
+      children: [
+        _hubAction(
+          'Add Broker',
+          Icons.person_add_outlined,
+          PremiumUI.primary,
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (c) => const AddBrokerScreen())),
+        ),
+        _hubAction(
+          'Add Lead',
+          Icons.post_add_outlined,
+          PremiumUI.secondary,
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (c) => const AddLeadFromBrokerScreen())),
+        ),
+        _hubAction(
+          'View Board',
+          Icons.view_kanban_outlined,
+          PremiumUI.accent,
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (c) => const ActivationPipelineBoard())),
+        ),
+        _hubAction(
+          'Review Work',
+          Icons.fact_check_outlined,
+          PremiumUI.hot,
+          () => Navigator.push(context,
+              MaterialPageRoute(builder: (c) => const BrokerReviewListScreen())),
+        ),
+        _hubAction(
+          'Inventory ERP',
+          Icons.apartment_outlined,
+          PremiumUI.secondary,
+          () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (c) => const ProjectInventoryERPScreen(
+                      projectId: 'project_wadhwa_wise_city'))),
+        ),
+      ],
+    );
+  }
+
+  Widget _hubAction(String label, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(width: 12),
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
+          ],
+        ),
       ),
     );
   }
@@ -680,7 +860,14 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
                     child: _smallActionButton(
                       'Verify Proof',
                       PremiumUI.secondary,
-                      () => _verifyVisitProof(visit, 'visit_done'),
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SiteVisitVerifyScreen(
+                            visitId: '${visit['id'] ?? ''}',
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -693,6 +880,59 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
                   ),
                 ],
               ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildBrokerLocks() {
+    if (_lockRows.isEmpty) {
+      return const Text('No active broker locks monitored.',
+          style: TextStyle(color: PremiumUI.muted));
+    }
+
+    return Column(
+      children: _lockRows.map((lock) {
+        final broker = lock['brokers_public'];
+        final lead = lock['leads_public'];
+        final brokerName = broker is Map ? (broker['company_name'] ?? broker['broker_name'] ?? 'Broker') : 'Broker';
+        final leadAlias = lead is Map ? (lead['alias'] ?? 'Lead') : 'Lead';
+        final status = '${lock['status'] ?? 'inactive'}';
+        final brokerage = '${lock['brokerage_status'] ?? 'tracking'}';
+
+        final expiry = DateTime.tryParse('${lock['expires_at'] ?? ''}');
+        final daysLeft = expiry != null ? expiry.difference(DateTime.now()).inDays : 0;
+        final countdown = daysLeft > 0 ? '$daysLeft days left' : 'Expired';
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: PremiumUI.cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: PremiumUI.secondary.withValues(alpha: 0.15)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.lock_clock, color: PremiumUI.secondary, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$leadAlias - $countdown',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text('$brokerName | ${brokerage.replaceAll('_', ' ').toUpperCase()}',
+                        style: const TextStyle(
+                            color: PremiumUI.muted, fontSize: 11)),
+                  ],
+                ),
+              ),
+              PremiumUI.statusBadge(status, daysLeft < 7 ? PremiumUI.hot : PremiumUI.secondary),
             ],
           ),
         );
@@ -851,93 +1091,6 @@ class _SourcingManagerDashboardState extends State<SourcingManagerDashboard> {
               child: Text(label, style: const TextStyle(color: Colors.white))),
           PremiumUI.statusBadge(value, color),
         ],
-      ),
-    );
-  }
-
-  Widget _buildActionHub() {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-                child: _largeActionCard(
-                    'Add New Lead',
-                    Icons.post_add,
-                    PremiumUI.secondary,
-                    () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (c) => const AddLeadFromBrokerScreen())))),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _largeActionCard(
-                    'Add Broker',
-                    Icons.person_add,
-                    PremiumUI.primary,
-                    () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (c) => const AddBrokerScreen())))),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-                child: _largeActionCard(
-                    'Review Leads',
-                    Icons.fact_check,
-                    PremiumUI.accent,
-                    () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (c) => const BrokerReviewListScreen())))),
-            const SizedBox(width: 12),
-            Expanded(
-                child: _largeActionCard(
-                    'Follow-ups',
-                    Icons.call,
-                    PremiumUI.warning,
-                    () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (c) =>
-                                const BrokerFollowupQueueScreen())))),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _largeActionCard(
-      String label, IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        height: 100,
-        decoration: BoxDecoration(
-          color: PremiumUI.cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-          boxShadow: [
-            BoxShadow(
-                color: color.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4))
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 10),
-            Text(label.toUpperCase(),
-                style: PremiumUI.subtitle.copyWith(
-                    color: Colors.white, fontSize: 10, letterSpacing: 1)),
-          ],
-        ),
       ),
     );
   }

@@ -1,0 +1,68 @@
+name: Production Launch Gate
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  security-and-compliance:
+    name: Security & Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run Security Constitution Scanner
+        run: node scripts/security-check.mjs
+
+      - name: Run Sprint 7 Static Check
+        run: node scripts/sprint7-static-check.mjs
+
+      - name: Run Root TypeScript Check
+        run: npx tsc --noEmit
+
+  flutter-build-check:
+    name: Flutter Web Build
+    runs-on: ubuntu-latest
+    needs: security-and-compliance
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: cd flutter_app && flutter pub get
+
+      - name: Verify analysis
+        run: cd flutter_app && flutter analyze
+
+      - name: Run Flutter tests
+        run: cd flutter_app && flutter test
+
+      - name: Build Web PWA (Release)
+        run: cd flutter_app && flutter build web --release --no-web-resources-cdn
+
+  supabase-function-check:
+    name: Supabase Function Config Drift
+    runs-on: ubuntu-latest
+    needs: security-and-compliance
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Verify Function Configuration
+        run: node scripts/check-function-drift.mjs

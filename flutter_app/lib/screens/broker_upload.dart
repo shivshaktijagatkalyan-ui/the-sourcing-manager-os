@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../app_config.dart';
+import '../utils/training_runtime.dart';
 
 class BrokerUploadScreen extends StatefulWidget {
   const BrokerUploadScreen({super.key});
@@ -45,7 +46,7 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
     try {
       Map<String, dynamic> result;
 
-      if (AppConfig.isSupabaseConfigured) {
+      if (AppConfig.isSupabaseConfigured && !AppConfig.isTrainingMode) {
         final response = await Supabase.instance.client.functions.invoke(
           'broker-upload-lead',
           body: {
@@ -64,9 +65,18 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
             : <String, dynamic>{'ok': false, 'reason': 'server_error'};
       } else {
         await Future<void>.delayed(const Duration(milliseconds: 700));
+        final leadId = TrainingRuntime.instance.addLeadFromBroker(
+          brokerId: TrainingRuntime.brokerId,
+          alias: _aliasController.text.trim(),
+          area: _areaController.text.trim(),
+          city: _cityController.text.trim(),
+          propertyName: _propertyController.text.trim(),
+          budgetMin: _parseAmount(_budgetMinController.text),
+          budgetMax: _parseAmount(_budgetMaxController.text),
+        );
         result = <String, dynamic>{
           'ok': true,
-          'lead_id': 'demo-lead-id',
+          'lead_id': leadId,
           'alias': _aliasController.text.trim(),
         };
       }
@@ -109,7 +119,8 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('The sensitive value was encrypted and discarded from the form.'),
+            const Text(
+                'The sensitive value was encrypted and discarded from the form.'),
             const SizedBox(height: 16),
             Text('Alias: $alias'),
             Text('Lead ID: $leadId'),
@@ -171,8 +182,11 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
                 validator: _validatePhone,
                 obscureText: _obscurePhone,
                 suffix: IconButton(
-                  icon: Icon(_obscurePhone ? Icons.visibility_off : Icons.visibility, size: 18),
-                  onPressed: () => setState(() => _obscurePhone = !_obscurePhone),
+                  icon: Icon(
+                      _obscurePhone ? Icons.visibility_off : Icons.visibility,
+                      size: 18),
+                  onPressed: () =>
+                      setState(() => _obscurePhone = !_obscurePhone),
                 ),
               ),
               const SizedBox(height: 16),
@@ -180,18 +194,22 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
                 controller: _areaController,
                 label: 'Area',
                 icon: Icons.map_outlined,
+                validator: (value) => _required(value, 'Area required'),
               ),
               const SizedBox(height: 16),
               _textField(
                 controller: _cityController,
                 label: 'City',
                 icon: Icons.location_city,
+                validator: (value) => _required(value, 'City required'),
               ),
               const SizedBox(height: 16),
               _textField(
                 controller: _propertyController,
                 label: 'Property Info',
                 icon: Icons.home_work_outlined,
+                validator: (value) =>
+                    _required(value, 'Property info required'),
               ),
               const SizedBox(height: 16),
               Row(
@@ -212,7 +230,7 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
                       label: 'Budget Max',
                       icon: Icons.currency_rupee,
                       keyboardType: TextInputType.number,
-                      validator: _optionalAmount,
+                      validator: _validateBudgetMax,
                     ),
                   ),
                 ],
@@ -268,7 +286,9 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
   String? _validatePhone(String? value) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return 'Required for one-time encrypted upload';
-    if (!RegExp(r'^\+?[0-9]{10,15}$').hasMatch(trimmed)) return 'Enter a valid value';
+    if (!RegExp(r'^\+?[0-9]{10,15}$').hasMatch(trimmed)) {
+      return 'Enter a valid value';
+    }
     return null;
   }
 
@@ -276,5 +296,17 @@ class _BrokerUploadScreenState extends State<BrokerUploadScreen> {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return null;
     return num.tryParse(trimmed) == null ? 'Number required' : null;
+  }
+
+  String? _validateBudgetMax(String? value) {
+    final amountError = _optionalAmount(value);
+    if (amountError != null) return amountError;
+
+    final min = _parseAmount(_budgetMinController.text);
+    final max = _parseAmount(value ?? '');
+    if (min != null && max != null && max < min) {
+      return 'Budget max must be greater than min';
+    }
+    return null;
   }
 }

@@ -83,6 +83,11 @@ class _DeveloperRoiDashboardState extends State<DeveloperRoiDashboard> {
           .select('id')
           .eq('status', 'completed');
 
+      // Active Locks
+      final activeLocksResponse = await client.from('broker_locks')
+          .select('id')
+          .eq('status', 'active');
+
       // Projects
       final projects = await client.from('projects')
           .select('id, project_name, area, city, status, rera_verified')
@@ -106,6 +111,7 @@ class _DeveloperRoiDashboardState extends State<DeveloperRoiDashboard> {
           'calls_done': (callsResponse as List).length,
           'site_visits_scheduled': (scheduledVisitsResponse as List).length,
           'verified_visits': (verifiedVisitsResponse as List).length,
+          'active_locks': (activeLocksResponse as List).length,
         };
         _projects = List<Map<String, dynamic>>.from(projects);
         _riskAlerts = List<Map<String, dynamic>>.from(riskAlerts);
@@ -130,6 +136,7 @@ class _DeveloperRoiDashboardState extends State<DeveloperRoiDashboard> {
         'calls_done': 102,
         'site_visits_scheduled': 24,
         'verified_visits': 18,
+        'active_locks': 42,
       };
       _projects = [
         {
@@ -259,6 +266,8 @@ class _DeveloperRoiDashboardState extends State<DeveloperRoiDashboard> {
     return Row(
       children: [
         Expanded(child: PremiumUI.kpiCard('Visits Scheduled', _stats['site_visits_scheduled'].toString(), Icons.calendar_today, const Color(0xFFEC4899))),
+        const SizedBox(width: 12),
+        Expanded(child: PremiumUI.kpiCard('Active Locks', _stats['active_locks'].toString(), Icons.lock_clock, PremiumUI.secondary)),
         const SizedBox(width: 12),
         Expanded(child: PremiumUI.kpiCard('Project ROI', '12.4x', Icons.insights, PremiumUI.warning)),
       ],

@@ -15,9 +15,9 @@ const getEnv = (key) => {
 const SUPABASE_URL = getEnv('SUPABASE_URL');
 const SUPABASE_ANON_KEY = getEnv('SUPABASE_ANON_KEY');
 
-// Use the verified pilot email from TEST_CREDENTIALS.md
-const TEST_BROKER_EMAIL = 'antigravity.test@gmail.com';
-const TEST_BROKER_PASSWORD = 'PilotTest@2026';
+// Use the verified pilot credentials from .env
+const TEST_BROKER_EMAIL = getEnv('TEST_BROKER_EMAIL') || 'jitu.broker.uat@sourcing-manager-os.test';
+const TEST_BROKER_PASSWORD = getEnv('TEST_BROKER_PASSWORD') || 'PilotTest@2026!Secure';
 
 async function run() {
   console.log(`Starting live verification for ${TEST_BROKER_EMAIL}...`);
@@ -39,10 +39,12 @@ async function run() {
 
   const signinData = await signinResponse.json();
   let accessToken = '';
+  let userId = '';
 
   if (signinResponse.ok) {
     console.log('Signin successful.');
     accessToken = signinData.access_token;
+    userId = signinData.user.id;
   } else {
     console.log(`Signin failed: ${signinData.error_description || JSON.stringify(signinData)}`);
     
@@ -64,6 +66,7 @@ async function run() {
     if (signupResponse.ok) {
       console.log('Signup successful (check email for confirmation if enabled).');
       accessToken = signupData.access_token;
+      userId = signupData.user?.id;
     } else {
       console.log(`Signup failed: ${signupData.msg || signupData.error_description || JSON.stringify(signupData)}`);
       return;
@@ -103,7 +106,7 @@ async function run() {
   
   // 3. Verify Broker Dashboard Access (Data Retrieval)
   console.log('Verifying broker profile data retrieval...');
-  const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/brokers_public?select=*&email=eq.${TEST_BROKER_EMAIL}`, {
+  const profileResponse = await fetch(`${SUPABASE_URL}/rest/v1/brokers_public?select=*&linked_user_id=eq.${userId}`, {
     method: 'GET',
     headers: {
       'apikey': SUPABASE_ANON_KEY,
