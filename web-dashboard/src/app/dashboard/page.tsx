@@ -1,5 +1,6 @@
-import { redirect } from 'next/navigation';
+import React from 'react';
+import SourcingManagerStrategicHub from '@/components/SourcingManagerStrategicHub';
 
 export default function DashboardPage() {
-  redirect('/broker');
+  return <SourcingManagerStrategicHub />;
 }
