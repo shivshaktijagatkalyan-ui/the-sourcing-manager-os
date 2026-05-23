@@ -1,9 +1,9 @@
 import { serve } from "std/http/server.ts";
-import { adminClient, currentUser, requirePermission, safeJson, recordAudit, cleanText, validUuid } from "../_shared/sprint7.ts";
+import { adminClient, currentUser, requirePermission, safeJson, recordAudit, cleanText, validUuid, sanitizeHtml, validatePhone, checkRateLimit, verifyApiVersion } from "../_shared/sprint7.ts";
 
 function cleanOptionalText(value: unknown, max = 120) {
   if (value === undefined || value === null || value === "") return null;
-  return cleanText(value as string, max);
+  return sanitizeHtml(value).slice(0, max);
 }
 
 function cleanAmount(value: unknown) {
@@ -12,16 +12,15 @@ function cleanAmount(value: unknown) {
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
-function validUploadContact(value: unknown) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!/^\+?[0-9]{10,15}$/.test(trimmed)) return null;
-  return trimmed;
-}
-
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*" } });
   if (req.method !== "POST") return safeJson({ ok: false, reason: "invalid_method" }, 405);
+
+  // 1. Verify API Version
+  const apiCheck = verifyApiVersion(req, 1);
+  if (!apiCheck.ok) {
+    return safeJson({ ok: false, reason: "api_version_unsupported" }, 400);
+  }
 
   let oneTimeContact: string | null = null;
 
@@ -31,7 +30,7 @@ serve(async (req: Request) => {
 
     const admin = adminClient();
 
-    // 1. Fetch Pilot Context (user must be active broker in pilot_users)
+    // 2. Fetch Pilot Context (user must be active broker in pilot_users)
     const { data: pilot, error: pilotError } = await admin
       .from('pilot_users')
       .select('org_id, status, role, organizations(status)')
@@ -47,13 +46,19 @@ serve(async (req: Request) => {
       return safeJson({ ok: false, reason: 'forbidden_not_broker' }, 403)
     }
 
-    // 2. Strict Permission Check
+    // 3. Rate Limiting Check
+    const rateLimitOk = await checkRateLimit(user.id, 'broker_upload_lead', pilot.org_id);
+    if (!rateLimitOk.ok) {
+      return safeJson({ ok: false, reason: 'rate_limit_exceeded' }, 429);
+    }
+
+    // 4. Strict Permission Check
     const allowed = await requirePermission(admin, user.id, 'can_upload_leads', pilot.org_id)
     if (!allowed) return safeJson({ ok: false, reason: 'forbidden_permission_required' }, 403)
 
     const body = await req.json();
-    const alias = cleanText(body.alias);
-    oneTimeContact = validUploadContact(body.phone);
+    const alias = sanitizeHtml(body.alias);
+    oneTimeContact = validatePhone(body.phone);
 
     if (!alias || !oneTimeContact) {
       return safeJson({ ok: false, reason: "invalid_input" }, 400);
@@ -139,7 +144,7 @@ serve(async (req: Request) => {
       .from("leads_public")
       .insert({
         organization_id: pilot.org_id,
-        broker_id: brokerProfile.id,
+        broker_id: user.id,
         source_broker_id: brokerProfile.id,
         assigned_sourcing_manager_id: brokerProfile.assigned_sourcing_manager_id,
         assigned_manager_id: brokerProfile.assigned_sourcing_manager_id,
@@ -155,7 +160,7 @@ serve(async (req: Request) => {
       .single();
 
     if (leadError || !lead) {
-      throw new Error('lead_creation_failed');
+      throw new Error('lead_creation_failed: ' + JSON.stringify(leadError));
     }
 
     const { error: vaultError } = await admin

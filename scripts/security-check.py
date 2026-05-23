@@ -55,6 +55,9 @@ CONTACT_WORD_ALLOWED = {
     "supabase/functions/lead-from-broker/index.ts",
     "supabase/functions/manage-caller-workflow/index.ts",
     "supabase/functions/ai-lead-response/index.ts",
+    "supabase/functions/kafka-decoder/index.ts",
+    "supabase/functions/salesforce-webhook/index.ts",
+    "supabase/functions/salesforce-sync-processor/index.ts",
 }
 
 

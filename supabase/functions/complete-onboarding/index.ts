@@ -172,6 +172,18 @@ serve(async (req: Request) => {
         { onConflict: 'linked_user_id' }
       );
       if (smErr) throw new Error('sourcing_manager_profile_failed');
+    } else if (role === 'caller') {
+      const { error: callerErr } = await supabase.from('caller_profiles').upsert(
+        {
+          linked_user_id: user.id,
+          organization_id: orgId,
+          caller_name: profileData.full_name || user.email?.split('@')[0],
+          city: profileData.city || 'Mumbai',
+          status: 'active',
+        },
+        { onConflict: 'linked_user_id' }
+      );
+      if (callerErr) throw new Error('caller_profile_failed');
     }
 
     const { error: auditErr } = await supabase.from('audit_events').insert({

@@ -1,6 +1,6 @@
 # TRUST LOOP UAT REPORT
 
-Generated: 2026-05-22T05:44:16.357Z
+Generated: 2026-05-23T07:27:43.035Z
 
 | Step | Status | Detail | Evidence |
 | --- | --- | --- | --- |
@@ -8,7 +8,7 @@ Generated: 2026-05-22T05:44:16.357Z
 | local provider config | PASS | Local Exotel provider keys are present for signature verification |  |
 | broker sign-in | PASS | authenticated with anon client only | 49157d39-5b1b-450e-8807-fa5eeb93a3aa |
 | broker onboarding | PASS | server-governed complete-onboarding accepted broker |  |
-| broker lead upload | PASS | lead created without returning contact data | 172e0749-d658-4d2d-b142-2a42363ec0ec |
+| broker lead upload | PASS | lead created without returning contact data | 18ac60fb-d310-4cf0-8140-dd358d7238de |
 | AI tool: trust-get-lead-summary | PASS | tool returned metadata-only response safely |  |
 | AI tool: trust-get-broker-lock-status | PASS | tool returned metadata-only response safely |  |
 | AI tool: trust-get-followup-risk | PASS | tool returned metadata-only response safely |  |
@@ -23,7 +23,7 @@ Generated: 2026-05-22T05:44:16.357Z
 | secure call initiation | PASS | provider accepted call request without contact exposure |  |
 | fake provider callback | PASS | forged callback could not mark call successful |  |
 | call outcome and follow-up | PASS | caller outcome update accepted without contact exposure |  |
-| site visit scheduling | PASS | site visit created through Edge Function | 6b48cff2-0437-45b5-8344-a2cd15e2934d |
+| site visit scheduling | PASS | site visit created through Edge Function | 562fd47e-4118-4b9d-b201-8085b51a7f50 |
 | wrong GPS rejection | PASS | bad GPS failed closed and invalidated visit |  |
 | site visit start | PASS | assigned SM started scheduled visit |  |
 | valid GPS verification | PASS | valid GPS proof passed at 0m |  |

@@ -25,6 +25,7 @@ const blockedPatterns = [
   { pattern: /console\.(log|debug|info|warn|error)\s*\(/, reason: 'runtime logging is forbidden in frontend and Edge Functions' },
   { pattern: /https:\/\/wa\.me|https:\/\/api\.whatsapp\.com|tel:/i, reason: 'direct calling or WhatsApp links are forbidden' },
   { pattern: /last\s*4|last\s*four|masked\s*number/i, reason: 'partial or masked contact display is forbidden' },
+  { pattern: /(?:api_key|api_token|secret_key|private_key|encryption_key|service_role_key)\s*=\s*['"`][0-9a-zA-Z+\/=_-]{16,}['"`]/i, reason: 'hardcoded credential or API key is forbidden' },
 ];
 
 const edgeFunctionRawErrorPatterns = [
@@ -52,6 +53,9 @@ const phoneWordAllowed = new Set([
   join('supabase', 'functions', 'lead-from-broker', 'index.ts'),
   join('supabase', 'functions', 'manage-caller-workflow', 'index.ts'),
   join('supabase', 'functions', 'ai-lead-response', 'index.ts'),
+  join('supabase', 'functions', 'kafka-decoder', 'index.ts'),
+  join('supabase', 'functions', 'salesforce-webhook', 'index.ts'),
+  join('supabase', 'functions', 'salesforce-sync-processor', 'index.ts'),
 ]);
 
 function listFiles(dir) {

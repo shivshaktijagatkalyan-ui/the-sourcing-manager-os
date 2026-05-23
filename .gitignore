@@ -11,3 +11,15 @@ supabase/.temp
 scratch/
 .playwright-cli/
 *.log
+
+# Local scratch and nested generator repositories
+spec-kit/
+Malcolm/
+awesome-design-md/
+impeccable/
+magic-mcp/
+npxskillui/
+taste-skill/
+ui-ux-pro-max-skill/
+system-design-primer/
+output/playwright/

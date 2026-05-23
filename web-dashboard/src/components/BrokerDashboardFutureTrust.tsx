@@ -1,8 +1,11 @@
 'use client';
 
-import React, { FormEvent, useMemo, useState } from 'react';
+import React, { FormEvent, useMemo, useState, useEffect } from 'react';
+import Link from 'next/link';
+import { supabase } from '../lib/supabase';
 import {
   AlertTriangle,
+  ArrowRightLeft,
   BadgeCheck,
   BriefcaseBusiness,
   CalendarClock,
@@ -374,6 +377,103 @@ export default function BrokerDashboardFutureTrust() {
   const [proposalAt, setProposalAt] = useState('');
   const [proposalNotes, setProposalNotes] = useState('');
   const [notice, setNotice] = useState('Dashboard ready. All contact-sensitive actions stay behind governed workflows.');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isRealDbConnected, setIsRealDbConnected] = useState(false);
+
+  async function fetchRealDbData(userId: string) {
+    try {
+      const { data: realLeads, error: leadsErr } = await supabase
+        .from('leads_public')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (realLeads && !leadsErr) {
+        const formatted: BrokerLead[] = realLeads.map((l: any) => {
+          let lockState: LockStatus = 'Not Started';
+          if (l.lead_status === 'visit_verified') lockState = 'Active';
+          
+          return {
+            id: l.id,
+            alias: l.alias || `L-${l.id.slice(0, 4).toUpperCase()}`,
+            project: l.property_name || 'Wadhwa Wise City',
+            area: l.area || 'Mira Road',
+            city: l.city || 'Mumbai',
+            budget: l.budget_min && l.budget_max ? `Rs. ${Math.round(l.budget_min / 100000)}L - Rs. ${Math.round(l.budget_max / 100000)}L` : 'Budget not set',
+            buyerType: 'End User',
+            assignedTo: l.assigned_manager_id ? 'Vinod SM' : 'Unassigned',
+            assignedRole: l.assigned_manager_id ? 'Sourcing Manager' : 'Unassigned',
+            dataLoan: l.lead_status === 'visit_verified' ? 'Active' : 'Inactive',
+            callStatus: l.lead_status || 'Not Called',
+            visitStatus: l.lead_status === 'visit_verified' ? 'Verified' : 'Not Scheduled',
+            brokerLock: lockState,
+            bookingStage: l.lead_status === 'visit_verified' ? 'Booking Discussion' : 'Not Started',
+            brokerageStatus: l.brokerage_status || 'Tracking',
+            leadQuality: l.lead_status === 'visit_verified' ? 'Hot' : 'Warm',
+            dataQuality: l.budget_min && l.budget_max ? 'Strong' : 'Medium',
+            callsAttempted: 0,
+            nextAction: l.lead_status === 'visit_verified' ? 'Track booking discussion' : 'Assign caller',
+            lastUpdated: l.updated_at || l.created_at
+          };
+        });
+        setLeads(formatted);
+        if (formatted.length > 0) {
+          setSelectedLeadId(formatted[0].id);
+        }
+      }
+
+      const { data: realProjects } = await supabase
+        .from('projects')
+        .select('*');
+      if (realProjects && realProjects.length > 0) {
+        setProjects(realProjects.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          developer: p.developer_name || 'Developer Group',
+          area: p.area || 'Panvel',
+          stage: 'Active Broker',
+          manager: 'Vinod SM',
+          activeLeads: realLeads?.filter((l: any) => l.project_id === p.id).length || 0,
+          verifiedVisits: realLeads?.filter((l: any) => l.project_id === p.id && l.lead_status === 'visit_verified').length || 0,
+          capacity: p.capacity || 200
+        })));
+      }
+
+      const { data: realAudits } = await supabase
+        .from('audit_events')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (realAudits && realAudits.length > 0) {
+        setActivity(realAudits.map((a: any) => ({
+          id: a.id,
+          kind: a.event_type || 'audit_logged',
+          body: a.event_context ? JSON.stringify(a.event_context) : 'Secure audit event logged.',
+          at: a.created_at
+        })));
+      }
+    } catch (err) {
+      console.warn('Real database query failed:', err);
+    }
+  }
+
+  useEffect(() => {
+    async function checkSession() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setCurrentUser(session.user);
+          setIsRealDbConnected(true);
+          setNotice(`Connected to live Supabase database as broker.`);
+          await fetchRealDbData(session.user.id);
+        } else {
+          setNotice('Simulation mode active. Sourced leads and dynamic loans are managed in-memory.');
+        }
+      } catch (err) {
+        console.warn('Database initialization skipped:', err);
+      }
+    }
+    checkSession();
+  }, []);
 
   const selectedLead = leads.find((lead) => lead.id === selectedLeadId) ?? leads[0];
   const stats = useMemo(() => buildStats(leads, proposals), [leads, proposals]);
@@ -493,7 +593,7 @@ export default function BrokerDashboardFutureTrust() {
     }
   };
 
-  const handleAddLead = (event: FormEvent<HTMLFormElement>) => {
+  const handleAddLead = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const cleanPhone = leadForm.oneTimePhone.trim();
     const phoneIsValid = /^\+?[0-9]{10,15}$/.test(cleanPhone);
@@ -503,6 +603,38 @@ export default function BrokerDashboardFutureTrust() {
     if (!leadForm.alias.trim() || !leadForm.area.trim() || !phoneIsValid || (min > 0 && max > 0 && max < min)) {
       setNotice('Lead intake blocked. Alias, valid one-time phone, area, and budget order are required.');
       return;
+    }
+
+    if (isRealDbConnected && currentUser) {
+      setNotice('Secure lead upload initiating via governing Edge Function...');
+      try {
+        const { data: res, error: fnErr } = await supabase.functions.invoke('broker-upload-lead', {
+          body: {
+            alias: leadForm.alias.trim(),
+            phone: cleanPhone,
+            area: leadForm.area.trim(),
+            city: leadForm.city.trim() || 'Mumbai',
+            property_name: leadForm.project,
+            budget_min: min * 100000,
+            budget_max: max * 100000,
+            buyerType: leadForm.buyerType
+          }
+        });
+
+        if (fnErr || !res?.ok) {
+          setNotice(`Upload Blocked: ${res?.reason || fnErr?.message || 'Access policy block'}`);
+          return;
+        }
+
+        setNotice(`Secure lead uploaded to vault: ${res.alias}`);
+        await fetchRealDbData(currentUser.id);
+        setLeadForm(defaultLeadForm);
+        setIsAddOpen(false);
+        return;
+      } catch (err: any) {
+        setNotice(`API Exception: ${err.message}`);
+        return;
+      }
     }
 
     const budget =
@@ -824,6 +956,13 @@ export default function BrokerDashboardFutureTrust() {
             <TrustBadge icon={<BadgeCheck size={15} />} label="Verified Active" tone="green" />
             <TrustBadge icon={<Gauge size={15} />} label="Silver Rank" tone="blue" />
             <TrustBadge icon={<LockKeyhole size={15} />} label="PII Vaulted" tone="amber" />
+            <Link
+              href="/salesforce-sync"
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-[#66fcf1]/30 bg-[#66fcf1]/10 px-3 text-sm font-semibold text-[#66fcf1] transition hover:bg-[#66fcf1]/20 focus:outline-none"
+            >
+              <ArrowRightLeft size={14} />
+              Sync Monitor
+            </Link>
             <button
               type="button"
               onClick={() => setIsAddOpen(true)}
@@ -834,6 +973,35 @@ export default function BrokerDashboardFutureTrust() {
             </button>
           </div>
         </header>
+
+        {/* CRM/ERP Masterclass Showcase & Sandbox Banner */}
+        <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-500/10 p-4 shadow-lg shadow-amber-500/5">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-amber-500/10 blur-xl rounded-full pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-32 h-32 bg-indigo-500/10 blur-xl rounded-full pointer-events-none" />
+          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 p-2 bg-amber-500/20 text-amber-400 rounded-lg border border-amber-500/30 shadow-md">
+                <Sparkles size={18} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-amber-400 tracking-wide flex items-center gap-1.5 font-sans">
+                  CRM/ERP Masterclass Sandbox
+                  <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 font-sans">NEW</span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl font-sans">
+                  Analyze the top 20 real estate systems and interact with custom lead management layouts. Test dynamic pipelines, dense ledgers, and secure zero-PII masking toggles live!
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/crm-erp-research"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-amber-500/20 hover:from-amber-400 hover:to-amber-500 transition-all duration-300 focus:outline-none"
+            >
+              Launch Sandbox
+              <ChevronRight size={14} className="stroke-[2.5]" />
+            </Link>
+          </div>
+        </div>
 
         <section className="grid gap-3 md:grid-cols-[1.4fr_1fr]">
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -1325,6 +1493,20 @@ function CommandPanel(props: {
 }) {
   const { lead } = props;
 
+  if (!lead) {
+    return (
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-[#0b171b] p-4 xl:sticky xl:top-4 xl:self-start">
+        <div className="text-center py-12 text-slate-500 text-sm">
+          <p className="font-semibold text-slate-300">No Lead Selected</p>
+          <p className="text-xs text-slate-500 mt-1">Submit a secure lead or select one to view actions.</p>
+        </div>
+        <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-300/10 p-3 text-sm leading-6 text-emerald-50/85">
+          {props.notice}
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="min-w-0 rounded-lg border border-white/10 bg-[#0b171b] p-4 xl:sticky xl:top-4 xl:self-start">
       <div className="flex items-start justify-between gap-3">
@@ -1767,19 +1949,19 @@ function StatCard({
   onClick?: () => void;
 }) {
   const colors = {
-    slate: 'text-slate-300 bg-white/[0.035] border-white/10',
-    orange: 'text-orange-200 bg-orange-300/10 border-orange-300/20',
-    blue: 'text-sky-200 bg-sky-300/10 border-sky-300/20',
-    amber: 'text-amber-200 bg-amber-300/10 border-amber-300/20',
-    green: 'text-emerald-200 bg-emerald-300/10 border-emerald-300/20',
-    purple: 'text-violet-200 bg-violet-300/10 border-violet-300/20',
+    slate: 'text-slate-300 bg-slate-500/5 border-slate-500/20 hover:border-slate-500/40 shadow-sm shadow-slate-500/5',
+    orange: 'text-orange-400 bg-orange-500/5 border-orange-500/30 hover:border-orange-500/50 shadow-sm shadow-orange-500/5',
+    blue: 'text-[#66fcf1] bg-cyan-500/5 border-cyan-500/20 hover:border-cyan-500/40 shadow-sm shadow-cyan-500/5',
+    amber: 'text-[#f5b545] bg-amber-500/5 border-amber-500/20 hover:border-amber-500/40 shadow-sm shadow-amber-500/5',
+    green: 'text-emerald-400 bg-emerald-500/5 border-emerald-500/30 hover:border-emerald-500/50 shadow-sm shadow-emerald-500/5',
+    purple: 'text-violet-300 bg-violet-500/5 border-violet-500/20 hover:border-violet-500/40 shadow-sm shadow-violet-500/5',
   } as const;
   const className = colors[tone as keyof typeof colors] ?? colors.slate;
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-lg border p-3 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.07] focus:outline-none focus:ring-2 focus:ring-amber-200 ${className}`}
+      className={`rounded-xl border p-4 text-left transition-all duration-300 hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-[#f5b545]/40 backdrop-blur-md ${className}`}
     >
       <div className="flex items-center justify-between gap-2">
         <span>{icon}</span>

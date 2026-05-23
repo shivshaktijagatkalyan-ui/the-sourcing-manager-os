@@ -84,6 +84,119 @@ export function cleanText(value: unknown, max = 120) {
   return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, max)
 }
 
+export function sanitizeHtml(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  let sanitized = value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+  sanitized = sanitized.replace(/<[^>]*>/g, '')
+  return sanitized.trim()
+}
+
+export function validateEmail(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+  return emailRegex.test(value) ? value.trim().toLowerCase() : null
+}
+
+export function validatePhone(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const cleaned = value.replace(/[\s-]/g, '')
+  const phoneRegex = /^(?:\+91|0)?[6-9]\d{9}$/
+  return phoneRegex.test(cleaned) ? cleaned : null
+}
+
+export function validateAlphanumeric(value: unknown, maxLen = 120): string | null {
+  if (typeof value !== 'string') return null
+  const cleaned = value.replace(/[^a-zA-Z0-9\s-_]/g, '').trim()
+  return cleaned.length > 0 ? cleaned.slice(0, maxLen) : null
+}
+
+export async function checkRateLimit(
+  userId: string,
+  action: string,
+  organizationId?: string,
+  customLimitPerMin?: number
+): Promise<{ ok: boolean; reason?: string }> {
+  const admin = adminClient()
+
+  const ACTION_LIMITS: Record<string, number> = {
+    'initiate_call': 5,
+    'broker_upload_lead': 20,
+    'create_site_visit': 10,
+    'verify_site_gps': 30,
+    'incident_action': 3,
+    'upload_site_photo': 10,
+  }
+
+  const limit = customLimitPerMin ?? ACTION_LIMITS[action] ?? 50
+  const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString()
+
+  const { count, error: countError } = await admin
+    .from('rate_limit_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('actor_id', userId)
+    .eq('action', action)
+    .gte('blocked_at', oneMinuteAgo)
+
+  if (countError) {
+    throw new Error('rate_limit_check_failed')
+  }
+
+  if (count !== null && count >= limit) {
+    await admin.from('audit_events').insert({
+      actor_id: userId,
+      event_type: 'rate_limit_blocked',
+      event_context: {
+        action,
+        count,
+        limit,
+        organization_id: organizationId ?? null,
+      },
+    })
+    return { ok: false, reason: 'rate_limit_exceeded' }
+  }
+
+  const { error: insertError } = await admin.from('rate_limit_events').insert({
+    actor_id: userId,
+    organization_id: organizationId ?? null,
+    action,
+    limit_key: `${userId}:${action}`,
+  })
+
+  if (insertError) {
+    throw new Error('rate_limit_record_failed')
+  }
+
+  return { ok: true }
+}
+
+export function verifyApiVersion(req: Request, minSupportedVersion = 1): { ok: boolean; version?: number } {
+  const versionHeader = req.headers.get('X-API-Version')
+  let version: number | null = null
+
+  if (versionHeader) {
+    const parsed = parseInt(versionHeader, 10)
+    if (!isNaN(parsed)) version = parsed
+  } else {
+    const acceptHeader = req.headers.get('Accept')
+    if (acceptHeader) {
+      const match = acceptHeader.match(/application\/vnd\.sourcing-manager\.v(\d+)\+json/)
+      if (match) {
+        version = parseInt(match[1], 10)
+      }
+    }
+  }
+
+  if (version === null) {
+    version = 1
+  }
+
+  if (version < minSupportedVersion) {
+    return { ok: false, version }
+  }
+
+  return { ok: true, version }
+}
+
 export async function sha256(value: string) {
   const data = new TextEncoder().encode(value)
   const hash = await crypto.subtle.digest('SHA-256', data)
@@ -111,6 +224,45 @@ export function timingSafeEqualHex(left: string, right: string) {
     diff |= left.charCodeAt(i) ^ right.charCodeAt(i)
   }
   return diff === 0
+}
+
+export async function verifyWebhookSignature(payload: string, signature: string, secret: string) {
+  if (!signature || !secret) return false
+  const expected = await hmacSha256(payload, secret)
+  return timingSafeEqualHex(expected, signature)
+}
+
+export function validateImageFileSignature(bytes: Uint8Array): 'image/jpeg' | 'image/png' | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg'
+  }
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) {
+    return 'image/png'
+  }
+  return null
+}
+
+export function isAllowedUploadSize(size: number, maxSize = 5 * 1024 * 1024) {
+  return Number.isFinite(size) && size > 0 && size <= maxSize
+}
+
+export const sensitiveEnvNames = new Set([
+  'EXOTEL_SECRET',
+  'EXOTEL_TOKEN',
+  'VOICE_AI_API_KEY',
+  'VOICE_AI_SECRET',
+  'GOOGLE_OAUTH_CLIENT_SECRET',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_URL',
+])
+
+export function isSensitiveEnvName(name: string) {
+  return sensitiveEnvNames.has(name)
+}
+
+export function validateEnvKeyName(name: string) {
+  return typeof name === 'string' && /^[A-Z0-9_]+$/.test(name)
 }
 
 export async function privateHash(value: string) {

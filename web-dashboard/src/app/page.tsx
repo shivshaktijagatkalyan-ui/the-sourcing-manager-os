@@ -56,8 +56,11 @@ export default function Home() {
             <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={18} height={18} />
             <span>{isLoading ? 'Signing in...' : 'Sign in with Google'}</span>
           </button>
-          <a href="/broker" className={styles.secondaryButton}>
-            Broker Portal
+          <a href="/salesforce-sync" className={styles.secondaryButton} style={{ borderColor: 'rgba(102, 252, 241, 0.4)', color: '#66fcf1' }}>
+            Sync Monitor
+          </a>
+          <a href="/crm-erp-research" className={styles.secondaryButton}>
+            CRM Sandbox
           </a>
         </div>
         

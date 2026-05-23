@@ -31,10 +31,13 @@ This file is the alias map for the cleaned project folder. It explains where com
 
 ## Documentation Folders
 
+- `docs/PRD.md`, `docs/TRD.md`, `docs/APP_FLOW.md`, and other root-level docs - stable entrypoints for reviewers; most link to canonical docs in the folders below.
+- `specs/` - Spec Kit feature specifications, plans, contracts, task lists, quickstarts, and analysis reports.
 - `docs/architecture/` - backend maps, state machines, blueprint, models, and system strategy.
 - `docs/reports/` - audit reports, status reports, smoke-test results, verification reports, and fix reports.
 - `docs/runbooks/` - deployment, launch, pilot, onboarding, UAT, rollback, and operating procedures.
 - `docs/security/` - compliance, privacy, PII, abuse, risk, lock, and constitution documents.
+- `docs/security/MCP_AND_CONNECTORS_SECURITY.md` - OpenAI connectors, remote MCP, local skills, secret handling, and approval policy for agent tooling.
 - `docs/product/` - sprint specs, MVP plans, training docs, and product workflow notes.
 - `docs/releases/` - release notes, changelog, completion docs, and launch gates.
 - `docs/archive/root-cleanup-2026-05-19/` - old loose docs and generated log/evidence files preserved for traceability.
@@ -64,6 +67,7 @@ They are already covered by `.gitignore` and can be moved to the same archive fo
 ## Cleanup Rules Going Forward
 
 - Keep production source in source folders, not the root.
+- Keep Spec Kit governance in `.specify/`, agent skills in `.agents/skills/`, and feature work under `specs/`.
 - Put new architecture docs in `docs/architecture/`.
 - Put new launch or operational procedure docs in `docs/runbooks/`.
 - Put verification output, audits, and sprint results in `docs/reports/`.

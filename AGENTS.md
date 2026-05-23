@@ -24,3 +24,9 @@ Deployment requires:
 3. Edge Function deployment (`supabase functions deploy <name>`)
 
 Verification should focus on `REAL_BUILD_VERIFICATION_REPORT.md` and the individual Sprint smoke test results.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read
+`specs/002-salesforce-sync-adapter/plan.md`.
+<!-- SPECKIT END -->

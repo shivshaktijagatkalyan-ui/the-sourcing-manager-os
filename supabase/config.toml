@@ -249,3 +249,27 @@ import_map = "functions/import_map.json"
 [functions.verify-site-visit-proof]
 verify_jwt = true
 import_map = "functions/import_map.json"
+
+[functions.mainframe-connector]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.kafka-decoder]
+verify_jwt = false
+import_map = "functions/import_map.json"
+
+[functions.enterprise-orchestrator]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.enterprise-review]
+verify_jwt = true
+import_map = "functions/import_map.json"
+
+[functions.salesforce-webhook]
+verify_jwt = false
+import_map = "functions/import_map.json"
+
+[functions.salesforce-sync-processor]
+verify_jwt = true
+import_map = "functions/import_map.json"
